@@ -216,7 +216,7 @@ const FroggerGame = () => {
   useEffect(() => {
     if (!gameStarted) return
 
-    const handleKeyPress = (e) => {
+    const handleKeyPress = (e: KeyboardEvent) => {
       if (gameOver || won) return
       
       setFrogPosition(prev => {
