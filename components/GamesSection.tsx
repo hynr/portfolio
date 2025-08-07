@@ -316,9 +316,9 @@ const FroggerGame = () => {
 // Game 4: Memory Match
 const MemoryGame = () => {
   const emojis = ['🚀', '💻', '☕', '🎮', '🔥', '⚡', '🌟', '🎯']
-  const [cards, setCards] = useState([])
-  const [flipped, setFlipped] = useState([])
-  const [matched, setMatched] = useState([])
+  const [cards, setCards] = useState<{ id: number; emoji: string }[]>([])
+  const [flipped, setFlipped] = useState<number[]>([])
+  const [matched, setMatched] = useState<number[]>([])
   const [moves, setMoves] = useState(0)
   const [gameStarted, setGameStarted] = useState(false)
 
