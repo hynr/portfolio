@@ -344,7 +344,7 @@ const MemoryGame = () => {
     }
   }, [flipped, cards])
 
-  const handleCardClick = (index) => {
+  const handleCardClick = (index: number) => {
     if (flipped.length === 2 || flipped.includes(index) || matched.includes(index)) return
     
     const newFlipped = [...flipped, index]
