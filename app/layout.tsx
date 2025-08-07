@@ -29,7 +29,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-gray-900 text-white overflow-x-hidden">
+      <body className="bg-dark-50 text-white overflow-x-hidden">
         {children}
       </body>
     </html>
