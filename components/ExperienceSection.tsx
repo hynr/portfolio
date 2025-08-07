@@ -88,10 +88,11 @@ const ExperienceSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">Experience</span>
+            <span className="gradient-text">My Journey</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            Building scalable solutions and leading technical initiatives across different domains
+            From teaching algorithms to building production systems serving 100K+ users - 
+            here's how I've grown as an engineer
           </p>
         </motion.div>
 

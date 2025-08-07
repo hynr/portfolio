@@ -5,7 +5,8 @@
       "Bash(rm:*)",
       "Bash(npm audit:*)",
       "Bash(npm install:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "WebFetch(domain:docs.github.com)"
     ],
     "deny": []
   }

@@ -135,31 +135,35 @@ const HeroSection = () => {
             transition={{ delay: 0.8 }}
             className="text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed"
           >
-            Computer Science student at UMBC with expertise in{' '}
-            <span className="text-primary-400 font-semibold">Python</span>,{' '}
-            <span className="text-primary-400 font-semibold">Django</span>, and{' '}
-            <span className="text-primary-400 font-semibold">AWS</span>.
-            Currently building scalable solutions at HZSR, serving 100K+ users.
+            I'm passionate about building scalable solutions that make a real impact. 
+            Currently pursuing my CS degree at UMBC while working at HZSR, where I've helped 
+            optimize systems serving 100K+ users. I love tackling complex challenges in{' '}
+            <span className="text-primary-400 font-semibold">backend engineering</span>,{' '}
+            <span className="text-primary-400 font-semibold">cloud infrastructure</span>, and{' '}
+            <span className="text-primary-400 font-semibold">AI/ML</span>.
           </motion.p>
 
-          {/* Stats */}
+          {/* Personal highlights */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.0 }}
-            className="grid grid-cols-3 gap-8 max-w-2xl mx-auto"
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto"
           >
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary-400">100K+</div>
-              <div className="text-gray-400 text-sm">Users Served</div>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">Current Role</div>
+              <div className="text-gray-300 text-sm">Software Engineer at HZSR</div>
+              <div className="text-gray-500 text-xs mt-1">Building real estate data platforms</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary-400">55%</div>
-              <div className="text-gray-400 text-sm">Performance Gain</div>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">Education</div>
+              <div className="text-gray-300 text-sm">UMBC Computer Science</div>
+              <div className="text-gray-500 text-xs mt-1">Minor in Statistics</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary-400">2hrs → 12min</div>
-              <div className="text-gray-400 text-sm">Incident Response</div>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">Focus Areas</div>
+              <div className="text-gray-300 text-sm">Backend + Cloud + AI/ML</div>
+              <div className="text-gray-500 text-xs mt-1">Building the future, one line at a time</div>
             </div>
           </motion.div>
 
@@ -174,13 +178,13 @@ const HeroSection = () => {
               onClick={() => scrollToSection('projects')}
               className="px-8 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-primary-500/25"
             >
-              View My Work
+              Check Out My Projects
             </button>
             <button
               onClick={() => scrollToSection('contact')}
               className="px-8 py-3 border border-gray-600 hover:border-primary-400 text-gray-300 hover:text-primary-400 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
             >
-              Let's Connect
+              Get In Touch
             </button>
           </motion.div>
 
