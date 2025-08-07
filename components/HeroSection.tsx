@@ -149,7 +149,7 @@ const HeroSection = () => {
             className="max-w-3xl mx-auto"
           >
             <div className="cyber-card rounded-xl p-6 font-mono text-left">
-              <div className="text-neon-400 text-sm mb-3">// Current Status</div>
+              <div className="text-neon-400 text-sm mb-3">{/* Current Status */}</div>
               <div className="text-gray-300 space-y-2">
                 <div>📍 Location: Columbia, MD</div>
                 <div>💼 Role: Software Engineer @ HZSR</div>

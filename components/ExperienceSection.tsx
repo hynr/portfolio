@@ -88,7 +88,7 @@ const ExperienceSection = () => {
             <span className="gradient-text">EXPERIENCE.LOG</span>
           </h2>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto font-mono">
-            // Journey from &quot;Hello World&quot; to 100K+ user systems
+            {/* Journey from "Hello World" to 100K+ user systems */}
           </p>
         </motion.div>
 
