@@ -92,7 +92,7 @@ const ExperienceSection = () => {
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
             From teaching algorithms to building production systems serving 100K+ users - 
-            here's how I've grown as an engineer
+            here&apos;s how I&apos;ve grown as an engineer
           </p>
         </motion.div>
 

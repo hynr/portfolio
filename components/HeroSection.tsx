@@ -10,14 +10,13 @@ const HeroSection = () => {
   const [loopNum, setLoopNum] = useState(0)
   const [typingSpeed, setTypingSpeed] = useState(150)
 
-  const roles = [
-    'Full Stack Engineer',
-    'Backend Architect',
-    'Cloud Engineer',
-    'AI/ML Developer'
-  ]
-
   useEffect(() => {
+    const roles = [
+      'Full Stack Engineer',
+      'Backend Architect',
+      'Cloud Engineer',
+      'AI/ML Developer'
+    ]
     const handleType = () => {
       const i = loopNum % roles.length
       const fullText = roles[i]
@@ -40,7 +39,7 @@ const HeroSection = () => {
 
     const timer = setTimeout(handleType, typingSpeed)
     return () => clearTimeout(timer)
-  }, [text, isDeleting, loopNum, typingSpeed, roles])
+  }, [text, isDeleting, loopNum, typingSpeed])
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId)
@@ -135,8 +134,8 @@ const HeroSection = () => {
             transition={{ delay: 0.8 }}
             className="text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed"
           >
-            I'm passionate about building scalable solutions that make a real impact. 
-            Currently pursuing my CS degree at UMBC while working at HZSR, where I've helped 
+            I&apos;m passionate about building scalable solutions that make a real impact. 
+            Currently pursuing my CS degree at UMBC while working at HZSR, where I&apos;ve helped 
             optimize systems serving 100K+ users. I love tackling complex challenges in{' '}
             <span className="text-primary-400 font-semibold">backend engineering</span>,{' '}
             <span className="text-primary-400 font-semibold">cloud infrastructure</span>, and{' '}

@@ -92,11 +92,11 @@ const ContactSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">Let's Chat</span>
+            <span className="gradient-text">Let&apos;s Chat</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
             Whether you want to discuss a cool project, talk tech, or explore opportunities together - 
-            I'd love to connect! Drop me a message and let's see what we can build.
+            I&apos;d love to connect! Drop me a message and let&apos;s see what we can build.
           </p>
         </motion.div>
 
@@ -111,8 +111,8 @@ const ContactSection = () => {
             <div>
               <h3 className="text-2xl font-bold text-white mb-6">Get in Touch</h3>
               <p className="text-gray-400 leading-relaxed mb-8">
-                I'm always open to discussing new opportunities, interesting projects, 
-                or potential collaborations. Whether you're a recruiter looking for talent 
+                I&apos;m always open to discussing new opportunities, interesting projects, 
+                or potential collaborations. Whether you&apos;re a recruiter looking for talent 
                 or a fellow developer wanting to connect, feel free to reach out!
               </p>
             </div>
