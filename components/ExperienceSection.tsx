@@ -79,7 +79,7 @@ const ExperienceSection = () => {
   const [selectedExperience, setSelectedExperience] = useState<string>(experiences[0].id)
 
   return (
-    <section id="experience" className="py-20 bg-gray-800/50">
+    <section id="experience" className="py-20 bg-gradient-to-br from-gray-800/30 to-warm-900/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -91,8 +91,8 @@ const ExperienceSection = () => {
             <span className="gradient-text">His Journey</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            From teaching algorithms to building production systems serving 100K+ users - 
-            here&apos;s how he&apos;s grown as an engineer
+            From classroom algorithms to production systems touching 100K+ lives - 
+            a story of growth, curiosity, and lots of coffee ☕
           </p>
         </motion.div>
 

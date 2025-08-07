@@ -21,14 +21,18 @@ body {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #ee7420 0%, #f29144 50%, #0ea5e9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .gradient-bg {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #ee7420 0%, #0ea5e9 100%);
+}
+
+.warm-glow {
+  box-shadow: 0 0 30px rgba(238, 116, 32, 0.3);
 }
 
 .glass-effect {

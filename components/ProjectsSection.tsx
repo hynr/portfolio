@@ -91,7 +91,7 @@ const ProjectsSection = () => {
     : projects.filter(project => project.category === selectedCategory)
 
   return (
-    <section id="projects" className="py-20 bg-gray-900">
+    <section id="projects" className="py-20 bg-gradient-to-br from-gray-900 to-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -103,8 +103,8 @@ const ProjectsSection = () => {
             <span className="gradient-text">Things He&apos;s Built</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            From AI-powered therapy tools to real-time sign language translation - 
-            projects that showcase his passion for solving real-world problems
+            From AI that helps therapists to sign language translation - 
+            each project tells a story of &quot;what if we could make this better?&quot; 💡
           </p>
         </motion.div>
 

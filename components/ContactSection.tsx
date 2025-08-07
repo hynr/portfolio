@@ -66,7 +66,7 @@ const ContactSection = () => {
   }
 
   return (
-    <section id="contact" className="py-20 bg-gray-900 relative overflow-hidden">
+    <section id="contact" className="py-20 bg-gradient-to-br from-gray-900 via-warm-900/5 to-gray-800 relative overflow-hidden">
       {/* Background Elements */}
       <div className="absolute inset-0">
         <motion.div
@@ -92,8 +92,8 @@ const ContactSection = () => {
             <span className="gradient-text">Get In Touch</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            Always open to interesting conversations about tech, projects, or opportunities.
-            Feel free to reach out through any of these channels!
+            Love chatting about code, cool ideas, or just life in general. 
+            Drop a line if you want to connect! 🤝
           </p>
         </motion.div>
 

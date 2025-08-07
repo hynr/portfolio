@@ -50,35 +50,50 @@ const HeroSection = () => {
 
   return (
     <section id="hero" className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Animated Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;utf8,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cdefs%3E%3Cpattern%20id%3D%22grid%22%20width%3D%2220%22%20height%3D%2220%22%20patternUnits%3D%22userSpaceOnUse%22%3E%3Cpath%20d%3D%22M%2020%200%20L%200%200%200%2020%22%20fill%3D%22none%22%20stroke%3D%22%23374151%22%20stroke-width%3D%220.5%22/%3E%3C/pattern%3E%3C/defs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23grid)%22%20/%3E%3C/svg%3E')]"></div>
+      {/* Warm Personal Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-warm-900/20">
+        {/* Subtle dots pattern */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `radial-gradient(circle, #ee7420 1px, transparent 1px)`,
+            backgroundSize: '30px 30px'
+          }}></div>
         </div>
         
-        {/* Floating Elements */}
+        {/* Warm floating elements */}
         <motion.div
-          className="absolute top-20 left-20 w-72 h-72 bg-primary-500/10 rounded-full blur-3xl"
+          className="absolute top-20 left-20 w-72 h-72 bg-primary-500/8 rounded-full blur-3xl"
           animate={{
-            x: [0, 100, 0],
-            y: [0, -100, 0],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            repeatType: 'reverse',
-          }}
-        />
-        <motion.div
-          className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"
-          animate={{
-            x: [0, -150, 0],
-            y: [0, 100, 0],
+            x: [0, 80, 0],
+            y: [0, -60, 0],
           }}
           transition={{
             duration: 25,
             repeat: Infinity,
             repeatType: 'reverse',
+          }}
+        />
+        <motion.div
+          className="absolute bottom-20 right-20 w-96 h-96 bg-secondary-500/8 rounded-full blur-3xl"
+          animate={{
+            x: [0, -100, 0],
+            y: [0, 80, 0],
+          }}
+          transition={{
+            duration: 30,
+            repeat: Infinity,
+            repeatType: 'reverse',
+          }}
+        />
+        <motion.div
+          className="absolute top-1/2 left-1/2 w-40 h-40 bg-warm-500/5 rounded-full blur-2xl"
+          animate={{
+            scale: [1, 1.2, 1],
+            rotate: [0, 180, 360],
+          }}
+          transition={{
+            duration: 35,
+            repeat: Infinity,
           }}
         />
       </div>
@@ -90,16 +105,15 @@ const HeroSection = () => {
           transition={{ duration: 0.8 }}
           className="space-y-8"
         >
-          {/* Terminal-style intro */}
+          {/* Personal intro */}
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="inline-flex items-center space-x-2 bg-gray-800/50 backdrop-blur-sm rounded-lg px-4 py-2 border border-gray-700"
+            className="inline-flex items-center space-x-2 bg-warm-900/20 backdrop-blur-sm rounded-full px-6 py-3 border border-primary-500/30"
           >
-            <Terminal size={16} className="text-green-400" />
-            <span className="text-green-400 font-mono text-sm">~/portfolio $</span>
-            <span className="text-gray-300 font-mono text-sm">whoami</span>
+            <span className="text-2xl">👋</span>
+            <span className="text-primary-300 text-sm">Hey there! Welcome to my space</span>
           </motion.div>
 
           {/* Name */}
@@ -134,13 +148,13 @@ const HeroSection = () => {
             transition={{ delay: 0.8 }}
             className="text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed"
           >
-            A passionate engineer who loves building things that matter. Currently pursuing his 
-            CS degree at UMBC while working at HZSR, where he&apos;s helped optimize systems 
-            serving 100K+ users. When he&apos;s not coding, you&apos;ll find him exploring new 
-            technologies in{' '}
-            <span className="text-primary-400 font-semibold">backend engineering</span>,{' '}
-            <span className="text-primary-400 font-semibold">cloud infrastructure</span>, and{' '}
-            <span className="text-primary-400 font-semibold">AI/ML</span>.
+            A curious soul who finds joy in turning ideas into reality through code. 
+            Currently juggling his CS studies at UMBC with his role at HZSR, where he&apos;s 
+            been part of optimizing systems that touch 100K+ lives. Outside of work, 
+            he&apos;s probably tinkering with{' '}
+            <span className="text-primary-400 font-semibold">backend magic</span>,{' '}
+            <span className="text-secondary-400 font-semibold">cloud adventures</span>, or{' '}
+            <span className="text-warm-400 font-semibold">AI experiments</span>.
           </motion.p>
 
           {/* Personal highlights */}
@@ -150,20 +164,23 @@ const HeroSection = () => {
             transition={{ delay: 1.0 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto"
           >
-            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
-              <div className="text-2xl font-bold text-primary-400 mb-1">Current Role</div>
-              <div className="text-gray-300 text-sm">Software Engineer at HZSR</div>
-              <div className="text-gray-500 text-xs mt-1">Building real estate data platforms</div>
+            <div className="bg-warm-900/10 backdrop-blur-sm rounded-xl p-5 border border-primary-500/20 hover:border-primary-500/40 transition-all duration-300">
+              <div className="text-xl mb-2">💼</div>
+              <div className="text-lg font-semibold text-primary-300 mb-1">Day Job</div>
+              <div className="text-gray-300 text-sm">Software Engineer @ HZSR</div>
+              <div className="text-gray-500 text-xs mt-1">Making real estate data magic happen</div>
             </div>
-            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
-              <div className="text-2xl font-bold text-primary-400 mb-1">Education</div>
+            <div className="bg-warm-900/10 backdrop-blur-sm rounded-xl p-5 border border-secondary-500/20 hover:border-secondary-500/40 transition-all duration-300">
+              <div className="text-xl mb-2">🎓</div>
+              <div className="text-lg font-semibold text-secondary-300 mb-1">Learning</div>
               <div className="text-gray-300 text-sm">UMBC Computer Science</div>
-              <div className="text-gray-500 text-xs mt-1">Minor in Statistics</div>
+              <div className="text-gray-500 text-xs mt-1">Statistics on the side</div>
             </div>
-            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
-              <div className="text-2xl font-bold text-primary-400 mb-1">Focus Areas</div>
-              <div className="text-gray-300 text-sm">Backend + Cloud + AI/ML</div>
-              <div className="text-gray-500 text-xs mt-1">Building the future, one line at a time</div>
+            <div className="bg-warm-900/10 backdrop-blur-sm rounded-xl p-5 border border-warm-500/20 hover:border-warm-500/40 transition-all duration-300">
+              <div className="text-xl mb-2">🚀</div>
+              <div className="text-lg font-semibold text-warm-300 mb-1">Passion</div>
+              <div className="text-gray-300 text-sm">Backend + Cloud + AI</div>
+              <div className="text-gray-500 text-xs mt-1">One commit at a time</div>
             </div>
           </motion.div>
 
@@ -176,15 +193,15 @@ const HeroSection = () => {
           >
             <button
               onClick={() => scrollToSection('projects')}
-              className="px-8 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-primary-500/25"
+              className="px-8 py-3 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white rounded-xl font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-primary-500/30 warm-glow"
             >
-              View His Work
+              🔍 Check Out His Projects
             </button>
             <button
               onClick={() => scrollToSection('skills')}
-              className="px-8 py-3 border border-gray-600 hover:border-primary-400 text-gray-300 hover:text-primary-400 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
+              className="px-8 py-3 border-2 border-secondary-500/50 hover:border-secondary-400 text-gray-300 hover:text-secondary-300 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 bg-secondary-900/20 hover:bg-secondary-900/30"
             >
-              Explore Skills
+              ⚡ Explore His Toolkit
             </button>
           </motion.div>
 
