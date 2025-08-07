@@ -7,7 +7,7 @@ import HeroSection from '@/components/HeroSection'
 import ExperienceSection from '@/components/ExperienceSection'
 import ProjectsSection from '@/components/ProjectsSection'
 import SkillsSection from '@/components/SkillsSection'
-import ContactSection from '@/components/ContactSection'
+import GamesSection from '@/components/GamesSection'
 import Navigation from '@/components/Navigation'
 
 export default function Home() {
@@ -38,7 +38,7 @@ export default function Home() {
       <ExperienceSection />
       <ProjectsSection />
       <SkillsSection />
-      <ContactSection />
+      <GamesSection />
     </main>
   )
 }

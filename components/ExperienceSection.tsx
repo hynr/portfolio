@@ -79,7 +79,7 @@ const ExperienceSection = () => {
   const [selectedExperience, setSelectedExperience] = useState<string>(experiences[0].id)
 
   return (
-    <section id="experience" className="py-20 bg-gradient-to-br from-gray-800/30 to-warm-900/10">
+    <section id="experience" className="py-20 bg-gradient-to-br from-sage-900/30 to-forest-900/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -87,12 +87,12 @@ const ExperienceSection = () => {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">His Journey</span>
+          <h2 className="text-3xl md:text-4xl font-bold mb-6">
+            <span className="gradient-text">My Story So Far</span>
           </h2>
-          <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            From classroom algorithms to production systems touching 100K+ lives - 
-            a story of growth, curiosity, and lots of coffee ☕
+          <p className="text-lg text-sage-300 max-w-2xl mx-auto">
+            From struggling with my first &quot;Hello World&quot; to helping systems serve 100K+ people... 
+            it&apos;s been quite the ride! ☕✨
           </p>
         </motion.div>
 

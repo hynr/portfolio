@@ -91,7 +91,7 @@ const ProjectsSection = () => {
     : projects.filter(project => project.category === selectedCategory)
 
   return (
-    <section id="projects" className="py-20 bg-gradient-to-br from-gray-900 to-gray-800">
+    <section id="projects" className="py-20 bg-gradient-to-br from-forest-900 to-sage-900/70">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -99,12 +99,12 @@ const ProjectsSection = () => {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">Things He&apos;s Built</span>
+          <h2 className="text-3xl md:text-4xl font-bold mb-6">
+            <span className="gradient-text">Stuff I&apos;ve Built</span>
           </h2>
-          <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            From AI that helps therapists to sign language translation - 
-            each project tells a story of &quot;what if we could make this better?&quot; 💡
+          <p className="text-lg text-sage-300 max-w-2xl mx-auto">
+            Some projects I&apos;m actually proud of! From helping therapists with AI to translating sign language - 
+            each one taught me something new 🛠️
           </p>
         </motion.div>
 

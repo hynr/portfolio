@@ -49,23 +49,35 @@ const HeroSection = () => {
   }
 
   return (
-    <section id="hero" className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Warm Personal Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-warm-900/20">
-        {/* Subtle dots pattern */}
-        <div className="absolute inset-0 opacity-10">
+    <section id="hero" className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-forest-900 via-sage-800 to-forest-800">
+      {/* Cozy Background */}
+      <div className="absolute inset-0">
+        {/* Paper texture */}
+        <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
-            backgroundImage: `radial-gradient(circle, #ee7420 1px, transparent 1px)`,
-            backgroundSize: '30px 30px'
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23eb6b3d' fill-opacity='0.4'%3E%3Cpath d='m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundSize: '60px 60px'
           }}></div>
         </div>
         
-        {/* Warm floating elements */}
+        {/* Floating elements */}
         <motion.div
-          className="absolute top-20 left-20 w-72 h-72 bg-primary-500/8 rounded-full blur-3xl"
+          className="absolute top-20 left-20 w-60 h-60 bg-coral-500/10 rounded-full blur-3xl"
           animate={{
-            x: [0, 80, 0],
-            y: [0, -60, 0],
+            x: [0, 70, 0],
+            y: [0, -50, 0],
+          }}
+          transition={{
+            duration: 20,
+            repeat: Infinity,
+            repeatType: 'reverse',
+          }}
+        />
+        <motion.div
+          className="absolute bottom-20 right-20 w-80 h-80 bg-sage-500/10 rounded-full blur-3xl"
+          animate={{
+            x: [0, -90, 0],
+            y: [0, 60, 0],
           }}
           transition={{
             duration: 25,
@@ -74,25 +86,13 @@ const HeroSection = () => {
           }}
         />
         <motion.div
-          className="absolute bottom-20 right-20 w-96 h-96 bg-secondary-500/8 rounded-full blur-3xl"
+          className="absolute top-1/3 right-1/4 w-32 h-32 bg-cream-500/8 rounded-full blur-2xl"
           animate={{
-            x: [0, -100, 0],
-            y: [0, 80, 0],
+            scale: [1, 1.3, 1],
+            opacity: [0.3, 0.6, 0.3],
           }}
           transition={{
-            duration: 30,
-            repeat: Infinity,
-            repeatType: 'reverse',
-          }}
-        />
-        <motion.div
-          className="absolute top-1/2 left-1/2 w-40 h-40 bg-warm-500/5 rounded-full blur-2xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 180, 360],
-          }}
-          transition={{
-            duration: 35,
+            duration: 15,
             repeat: Infinity,
           }}
         />
@@ -105,104 +105,108 @@ const HeroSection = () => {
           transition={{ duration: 0.8 }}
           className="space-y-8"
         >
-          {/* Personal intro */}
+          {/* Casual intro */}
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="inline-flex items-center space-x-2 bg-warm-900/20 backdrop-blur-sm rounded-full px-6 py-3 border border-primary-500/30"
+            className="inline-flex items-center space-x-3 personal-card rounded-2xl px-6 py-4"
           >
-            <span className="text-2xl">👋</span>
-            <span className="text-primary-300 text-sm">Hey there! Welcome to my space</span>
+            <span className="text-3xl">🌱</span>
+            <span className="text-cream-200 font-medium">Hey! I&apos;m just a guy who loves coding</span>
           </motion.div>
 
-          {/* Name */}
+          {/* Name - more casual */}
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="text-5xl md:text-7xl font-bold"
+            className="text-4xl md:text-6xl font-bold mb-4"
           >
-            <span className="gradient-text">Huzaifa</span>{' '}
-            <span className="text-white">Naroo</span>
+            <span className="text-cream-200">I&apos;m </span>
+            <span className="gradient-text">Huzaifa</span>
           </motion.h1>
 
-          {/* Typing Animation */}
+          {/* Simple description instead of typing */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6 }}
-            className="h-16 flex items-center justify-center"
+            className="mb-8"
           >
-            <h2 className="text-2xl md:text-4xl font-light text-gray-300">
-              <Code className="inline mr-2" size={32} />
-              {text}
-              <span className="animate-pulse text-primary-400">|</span>
-            </h2>
+            <p className="text-xl md:text-2xl text-sage-300 font-light">
+              CS student • Code enthusiast • Problem solver
+            </p>
           </motion.div>
 
-          {/* Description */}
-          <motion.p
+          {/* Personal story */}
+          <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8 }}
-            className="text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed"
+            className="max-w-2xl mx-auto"
           >
-            A curious soul who finds joy in turning ideas into reality through code. 
-            Currently juggling his CS studies at UMBC with his role at HZSR, where he&apos;s 
-            been part of optimizing systems that touch 100K+ lives. Outside of work, 
-            he&apos;s probably tinkering with{' '}
-            <span className="text-primary-400 font-semibold">backend magic</span>,{' '}
-            <span className="text-secondary-400 font-semibold">cloud adventures</span>, or{' '}
-            <span className="text-warm-400 font-semibold">AI experiments</span>.
-          </motion.p>
+            <p className="text-lg text-sage-200 leading-relaxed mb-6">
+              Currently studying Computer Science at UMBC and working part-time at HZSR. 
+              I spend way too much time coding, love solving puzzles, and think the best 
+              part of programming is when everything finally clicks! ✨
+            </p>
+            <p className="text-base text-sage-300">
+              When I&apos;m not debugging code, you&apos;ll find me experimenting with new tech, 
+              playing games, or wondering why my code worked yesterday but not today 🤔
+            </p>
+          </motion.div>
 
-          {/* Personal highlights */}
+          {/* Simple navigation */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.0 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto"
+            className="flex flex-wrap justify-center gap-4 text-sm"
           >
-            <div className="bg-warm-900/10 backdrop-blur-sm rounded-xl p-5 border border-primary-500/20 hover:border-primary-500/40 transition-all duration-300">
-              <div className="text-xl mb-2">💼</div>
-              <div className="text-lg font-semibold text-primary-300 mb-1">Day Job</div>
-              <div className="text-gray-300 text-sm">Software Engineer @ HZSR</div>
-              <div className="text-gray-500 text-xs mt-1">Making real estate data magic happen</div>
-            </div>
-            <div className="bg-warm-900/10 backdrop-blur-sm rounded-xl p-5 border border-secondary-500/20 hover:border-secondary-500/40 transition-all duration-300">
-              <div className="text-xl mb-2">🎓</div>
-              <div className="text-lg font-semibold text-secondary-300 mb-1">Learning</div>
-              <div className="text-gray-300 text-sm">UMBC Computer Science</div>
-              <div className="text-gray-500 text-xs mt-1">Statistics on the side</div>
-            </div>
-            <div className="bg-warm-900/10 backdrop-blur-sm rounded-xl p-5 border border-warm-500/20 hover:border-warm-500/40 transition-all duration-300">
-              <div className="text-xl mb-2">🚀</div>
-              <div className="text-lg font-semibold text-warm-300 mb-1">Passion</div>
-              <div className="text-gray-300 text-sm">Backend + Cloud + AI</div>
-              <div className="text-gray-500 text-xs mt-1">One commit at a time</div>
-            </div>
+            <button
+              onClick={() => scrollToSection('projects')}
+              className="px-4 py-2 personal-card rounded-lg text-cream-200 hover:text-coral-300 transition-colors duration-200"
+            >
+              stuff I&apos;ve built 🛠️
+            </button>
+            <button
+              onClick={() => scrollToSection('experience')}
+              className="px-4 py-2 personal-card rounded-lg text-cream-200 hover:text-sage-300 transition-colors duration-200"
+            >
+              my story 📖
+            </button>
+            <button
+              onClick={() => scrollToSection('contact')}
+              className="px-4 py-2 personal-card rounded-lg text-cream-200 hover:text-cream-300 transition-colors duration-200"
+            >
+              let&apos;s chat + play games 🎮
+            </button>
           </motion.div>
 
-          {/* CTA Buttons */}
+          {/* Fun quick facts */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.2 }}
-            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-xl mx-auto text-center"
           >
-            <button
-              onClick={() => scrollToSection('projects')}
-              className="px-8 py-3 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white rounded-xl font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-primary-500/30 warm-glow"
-            >
-              🔍 Check Out His Projects
-            </button>
-            <button
-              onClick={() => scrollToSection('skills')}
-              className="px-8 py-3 border-2 border-secondary-500/50 hover:border-secondary-400 text-gray-300 hover:text-secondary-300 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 bg-secondary-900/20 hover:bg-secondary-900/30"
-            >
-              ⚡ Explore His Toolkit
-            </button>
+            <div className="personal-card p-3 rounded-xl">
+              <div className="text-2xl mb-1">☕</div>
+              <div className="text-xs text-sage-300">Coffee powered</div>
+            </div>
+            <div className="personal-card p-3 rounded-xl">
+              <div className="text-2xl mb-1">🌙</div>
+              <div className="text-xs text-sage-300">Night coder</div>
+            </div>
+            <div className="personal-card p-3 rounded-xl">
+              <div className="text-2xl mb-1">🐛</div>
+              <div className="text-xs text-sage-300">Bug hunter</div>
+            </div>
+            <div className="personal-card p-3 rounded-xl">
+              <div className="text-2xl mb-1">🎯</div>
+              <div className="text-xs text-sage-300">Problem solver</div>
+            </div>
           </motion.div>
 
           {/* Social Links */}

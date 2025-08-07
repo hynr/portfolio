@@ -21,18 +21,24 @@ body {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #ee7420 0%, #f29144 50%, #0ea5e9 100%);
+  background: linear-gradient(135deg, #eb6b3d 0%, #5d735d 50%, #e8bf7a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .gradient-bg {
-  background: linear-gradient(135deg, #ee7420 0%, #0ea5e9 100%);
+  background: linear-gradient(135deg, #eb6b3d 0%, #5d735d 100%);
 }
 
-.warm-glow {
-  box-shadow: 0 0 30px rgba(238, 116, 32, 0.3);
+.cozy-glow {
+  box-shadow: 0 0 25px rgba(235, 107, 61, 0.2), 0 0 50px rgba(93, 115, 93, 0.1);
+}
+
+.personal-card {
+  background: linear-gradient(135deg, rgba(93, 115, 93, 0.1) 0%, rgba(235, 107, 61, 0.05) 100%);
+  border: 1px solid rgba(93, 115, 93, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .glass-effect {
