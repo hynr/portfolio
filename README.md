@@ -6,6 +6,8 @@ A modern, responsive portfolio website built with Next.js, TypeScript, and Frame
 
 Visit the live portfolio at: [https://hynr.github.io/portfolio](https://hynr.github.io/portfolio)
 
+> **Status**: Deploying latest version with personal touch and modern animations!
+
 ## ✨ Features
 
 - **Modern Design**: Clean, professional design with smooth animations
