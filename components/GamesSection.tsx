@@ -89,7 +89,7 @@ const TicTacToe = () => {
   const [isXNext, setIsXNext] = useState(true)
   const [winner, setWinner] = useState(null)
 
-  const checkWinner = (squares) => {
+  const checkWinner = (squares: (string | null)[]) => {
     const lines = [
       [0, 1, 2], [3, 4, 5], [6, 7, 8],
       [0, 3, 6], [1, 4, 7], [2, 5, 8],
