@@ -87,7 +87,7 @@ const ClickSpeedGame = () => {
 const TicTacToe = () => {
   const [board, setBoard] = useState(Array(9).fill(null))
   const [isXNext, setIsXNext] = useState(true)
-  const [winner, setWinner] = useState(null)
+  const [winner, setWinner] = useState<string | null>(null)
 
   const checkWinner = (squares: (string | null)[]) => {
     const lines = [
