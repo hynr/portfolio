@@ -6,7 +6,7 @@ import { Mail, Phone, MapPin, Github, Linkedin, GamepadIcon, RotateCcw, Trophy, 
 
 // Contact info (kept simple)
 const contactInfo = [
-  { icon: Mail, value: 'huzaifanaroo1@gmail.com', href: 'mailto:huzaifanaroo1@gmail.com' },
+  { icon: Mail, value: 'huzaifa478@gmail.com', href: 'mailto:huzaifa478@gmail.com' },
   { icon: Phone, value: '443-883-5520', href: 'tel:443-883-5520' },
   { icon: Github, value: 'github.com/hynr', href: 'https://github.com/hynr' },
   { icon: Linkedin, value: 'linkedin.com/in/huzaifa-naroo', href: 'https://linkedin.com/in/huzaifa-naroo' }
@@ -162,7 +162,158 @@ const TicTacToe = () => {
   )
 }
 
-// Game 3: Memory Match
+// Game 3: Frogger
+const FroggerGame = () => {
+  const [frogPosition, setFrogPosition] = useState({ x: 7, y: 9 })
+  const [cars, setCars] = useState([
+    { x: 0, y: 7, speed: 1 },
+    { x: 5, y: 6, speed: -1 },
+    { x: 2, y: 5, speed: 1 },
+    { x: 8, y: 4, speed: -1 }
+  ])
+  const [gameOver, setGameOver] = useState(false)
+  const [won, setWon] = useState(false)
+  const [gameStarted, setGameStarted] = useState(false)
+
+  const resetGame = () => {
+    setFrogPosition({ x: 7, y: 9 })
+    setCars([
+      { x: 0, y: 7, speed: 1 },
+      { x: 5, y: 6, speed: -1 },
+      { x: 2, y: 5, speed: 1 },
+      { x: 8, y: 4, speed: -1 }
+    ])
+    setGameOver(false)
+    setWon(false)
+    setGameStarted(true)
+  }
+
+  useEffect(() => {
+    if (!gameStarted || gameOver || won) return
+
+    const interval = setInterval(() => {
+      setCars(prevCars => 
+        prevCars.map(car => ({
+          ...car,
+          x: car.speed > 0 
+            ? (car.x + 1) % 15 
+            : car.x === 0 ? 14 : car.x - 1
+        }))
+      )
+    }, 300)
+
+    return () => clearInterval(interval)
+  }, [gameStarted, gameOver, won])
+
+  useEffect(() => {
+    const collision = cars.some(car => 
+      car.x === frogPosition.x && car.y === frogPosition.y
+    )
+    if (collision) setGameOver(true)
+    if (frogPosition.y === 0) setWon(true)
+  }, [frogPosition, cars])
+
+  useEffect(() => {
+    if (!gameStarted) return
+
+    const handleKeyPress = (e) => {
+      if (gameOver || won) return
+      
+      setFrogPosition(prev => {
+        switch(e.key) {
+          case 'ArrowUp':
+            return { ...prev, y: Math.max(0, prev.y - 1) }
+          case 'ArrowDown':
+            return { ...prev, y: Math.min(9, prev.y + 1) }
+          case 'ArrowLeft':
+            return { ...prev, x: Math.max(0, prev.x - 1) }
+          case 'ArrowRight':
+            return { ...prev, x: Math.min(14, prev.x + 1) }
+          default:
+            return prev
+        }
+      })
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [gameStarted, gameOver, won])
+
+  const renderGrid = () => {
+    const grid = []
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 15; x++) {
+        const isFrog = frogPosition.x === x && frogPosition.y === y
+        const car = cars.find(c => c.x === x && c.y === y)
+        const isRoad = y >= 4 && y <= 7
+        
+        grid.push(
+          <div
+            key={`${x}-${y}`}
+            className={`w-4 h-4 border border-sage-600 ${
+              y === 0 ? 'bg-neon-500' : 
+              isRoad ? 'bg-gray-700' : 
+              'bg-green-600'
+            }`}
+          >
+            {isFrog ? '🐸' : car ? '🚗' : ''}
+          </div>
+        )
+      }
+    }
+    return grid
+  }
+
+  return (
+    <div className="personal-card p-6 rounded-2xl">
+      <div className="text-center">
+        <Target className="mx-auto mb-3 text-neon-400" size={32} />
+        <h3 className="text-lg font-semibold text-cream-200 mb-2">Frogger</h3>
+        
+        {!gameStarted ? (
+          <div>
+            <p className="text-sage-300 text-sm mb-4">Get the frog to safety! Use arrow keys.</p>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 bg-neon-500 hover:bg-neon-600 text-white rounded-lg transition-colors"
+            >
+              Start Game
+            </button>
+          </div>
+        ) : gameOver ? (
+          <div>
+            <div className="text-xl font-bold text-red-400 mb-2">💥 Game Over!</div>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 bg-neon-500 hover:bg-neon-600 text-white rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : won ? (
+          <div>
+            <div className="text-xl font-bold text-neon-400 mb-2">🎉 You made it!</div>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 bg-neon-500 hover:bg-neon-600 text-white rounded-lg transition-colors"
+            >
+              Play Again
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div className="text-sage-300 text-xs mb-2">Arrow keys to move</div>
+            <div className="grid grid-cols-15 gap-0 max-w-xs mx-auto border border-sage-600">
+              {renderGrid()}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Game 4: Memory Match
 const MemoryGame = () => {
   const emojis = ['🚀', '💻', '☕', '🎮', '🔥', '⚡', '🌟', '🎯']
   const [cards, setCards] = useState([])
@@ -186,16 +337,22 @@ const MemoryGame = () => {
     if (flipped.length === 2) {
       const [first, second] = flipped
       if (cards[first].emoji === cards[second].emoji) {
-        setMatched([...matched, first, second])
+        setMatched(prev => [...prev, first, second])
       }
-      setTimeout(() => setFlipped([]), 1000)
+      const timer = setTimeout(() => setFlipped([]), 1000)
+      return () => clearTimeout(timer)
     }
-  }, [flipped, cards, matched])
+  }, [flipped, cards])
 
   const handleCardClick = (index) => {
     if (flipped.length === 2 || flipped.includes(index) || matched.includes(index)) return
-    setFlipped([...flipped, index])
-    if (flipped.length === 0) setMoves(moves + 1)
+    
+    const newFlipped = [...flipped, index]
+    setFlipped(newFlipped)
+    
+    if (newFlipped.length === 1) {
+      setMoves(moves + 1)
+    }
   }
 
   const isGameWon = matched.length === cards.length
@@ -291,7 +448,7 @@ const GamesSection = () => {
         </motion.div>
 
         {/* Games Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-8 max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -315,6 +472,15 @@ const GamesSection = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.3 }}
+          >
+            <FroggerGame />
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
           >
             <MemoryGame />
           </motion.div>

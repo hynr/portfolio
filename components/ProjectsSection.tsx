@@ -23,64 +23,65 @@ interface Project {
 const projects: Project[] = [
   {
     id: 'therasort',
-    title: 'Therasort - AI Therapy Note Parser',
-    description: 'LLM-based tool to analyze therapy notes and extract structured themes from free-text data',
-    longDescription: 'Built an intelligent system that processes over 1,200 therapy notes using OpenAI\'s API to extract meaningful insights and themes. The application features a React frontend with real-time filtering and visualizations, backed by a Flask API and MongoDB database.',
-    technologies: ['Flask', 'OpenAI API', 'MongoDB', 'React', 'Python', 'NLP'],
+    title: 'Therasort – AI Therapy Note Parser',
+    description: 'Clinical note parser powered by Generative AI to assist therapists in organizing unstructured text data',
+    longDescription: 'Designed a clinical note parser powered by Generative AI to assist therapists in organizing unstructured text data. Utilized OpenAI\'s language models to extract and classify issues into short-term, long-term, and temporary care categories.',
+    technologies: ['Python', 'OpenAI API', 'MongoDB', 'Generative AI', 'UI Dashboard'],
     category: 'AI/ML',
     image: '/projects/therasort.jpg',
     githubUrl: 'https://github.com/hynr/therasort',
     features: [
-      'Advanced prompt engineering for 91% accuracy',
-      'Real-time theme extraction and classification',
-      'Interactive data visualizations',
-      'MongoDB-powered data persistence',
-      'User testing with practicing therapists'
+      'Generative AI-powered text analysis',
+      'Classification into care categories',
+      'MongoDB data storage',
+      'UI dashboard for visualization',
+      'Patient insights filtering'
     ],
-    metrics: ['1,200+ therapy notes processed', '91% extraction accuracy', 'Clinical usability validated'],
+    metrics: ['Clinical workflow optimization', 'Automated text processing', 'Therapist productivity gains'],
     icon: Brain
   },
   {
     id: 'asl-translator',
     title: 'ASL Sign Language Translator',
-    description: 'Real-time ASL interpreter using computer vision and machine learning',
-    longDescription: 'Developed a real-time American Sign Language interpreter that achieves 92% accuracy across 26 hand signs. The system uses TensorFlow Lite for efficient inference, MediaPipe for gesture tracking, and serves predictions through a low-latency Flask API.',
-    technologies: ['Python', 'TensorFlow Lite', 'MediaPipe', 'Flask', 'OpenCV', 'Computer Vision'],
+    description: 'Real-time ASL classifier using webcam input and edge-optimized deep learning models',
+    longDescription: 'Developed a real-time ASL classifier using webcam input and edge-optimized deep learning models. Achieved 92% accuracy using a custom OpenCV/Mediapipe dataset and optimized model for mobile deployment.',
+    technologies: ['Python', 'OpenCV', 'Mediapipe', 'Flask', 'Deep Learning', 'Mobile Optimization'],
     category: 'AI/ML',
     image: '/projects/asl-translator.jpg',
     githubUrl: 'https://github.com/hynr/asl-translator',
     demoUrl: '#',
     features: [
-      'Real-time hand gesture recognition',
-      'TensorFlow Lite optimization for mobile',
-      'MediaPipe integration for tracking',
-      'Low-latency Flask API',
-      '92% accuracy across 26 signs'
+      'Real-time webcam ASL recognition',
+      '92% accuracy classification',
+      'Edge-optimized deep learning',
+      'Flask frontend deployment',
+      'Mobile and local use support'
     ],
-    metrics: ['92% recognition accuracy', '26 ASL signs supported', '<100ms response time'],
+    metrics: ['92% accuracy achieved', 'Mobile deployment ready', 'Accessibility focused'],
     icon: Hand
   },
   {
-    id: 'hzsr-platform',
-    title: 'HZSR Real Estate Platform',
-    description: 'Scalable backend services and data pipelines for real estate intelligence',
-    longDescription: 'Led the development of backend services powering a real estate data intelligence platform serving 100K+ users. Built with Django and PostgreSQL, featuring advanced data pipelines, AWS infrastructure, and comprehensive observability.',
-    technologies: ['Python', 'Django', 'PostgreSQL', 'AWS', 'Docker', 'Kubernetes', 'Terraform'],
-    category: 'Full Stack',
-    image: '/projects/hzsr-platform.jpg',
+    id: 'ecommerce-microservices',
+    title: 'E-commerce Microservices Platform',
+    description: 'Backend microservices for a 10K-user e-commerce simulation using Node.js and PostgreSQL',
+    longDescription: 'Designed backend microservices for a 10K-user e-commerce simulation using Node.js and PostgreSQL. Integrated Redis for caching and async job queues, improving request throughput. Automated CI/CD with GitHub Actions for test coverage and AWS deployment.',
+    technologies: ['Node.js', 'PostgreSQL', 'Redis', 'AWS', 'GitHub Actions', 'Microservices'],
+    category: 'Backend',
+    image: '/projects/ecommerce.jpg',
+    githubUrl: 'https://github.com/hynr/ecommerce-microservices',
     features: [
-      'Microservices architecture with Django',
-      'Real-time data pipeline optimization',
-      'AWS infrastructure automation',
-      'CI/CD with Docker & Kubernetes',
-      'Comprehensive monitoring stack'
+      'Microservices architecture',
+      '10K user capacity simulation',
+      'Redis caching and job queues',
+      'Automated CI/CD pipeline',
+      'AWS cloud deployment'
     ],
-    metrics: ['100K+ active users', '55% faster report generation', '2hrs → 12min incident response'],
+    metrics: ['10K concurrent users', 'Improved request throughput', 'Automated deployment'],
     icon: Database
   }
 ]
 
-const categories = ['All', 'AI/ML', 'Full Stack', 'Backend']
+const categories = ['All', 'AI/ML', 'Backend', 'Full Stack']
 
 const ProjectsSection = () => {
   const [selectedCategory, setSelectedCategory] = useState('All')

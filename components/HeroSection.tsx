@@ -12,9 +12,9 @@ const HeroSection = () => {
 
   useEffect(() => {
     const roles = [
-      'Code Wizard',
-      'Bug Slayer',
-      'System Builder', 
+      'Full-Stack Developer',
+      'Software Engineer',
+      'System Architect', 
       'Problem Solver'
     ]
     
@@ -151,7 +151,7 @@ const HeroSection = () => {
             <div className="cyber-card rounded-xl p-6 font-mono text-left">
               <div className="text-neon-400 text-sm mb-3">// Current Status</div>
               <div className="text-gray-300 space-y-2">
-                <div>📍 Location: UMBC Campus</div>
+                <div>📍 Location: Columbia, MD</div>
                 <div>💼 Role: Software Engineer @ HZSR</div>
                 <div>🎯 Mission: Building systems that serve 100K+ users</div>
                 <div>⚡ Expertise: Python | React | AWS | AI/ML</div>
@@ -200,7 +200,7 @@ const HeroSection = () => {
             {[
               { icon: Github, href: 'https://github.com/hynr', color: 'hover:text-neon-400' },
               { icon: Linkedin, href: 'https://linkedin.com/in/huzaifa-naroo', color: 'hover:text-electric-400' },
-              { icon: Mail, href: 'mailto:huzaifanaroo1@gmail.com', color: 'hover:text-purple-400' }
+              { icon: Mail, href: 'mailto:huzaifa478@gmail.com', color: 'hover:text-purple-400' }
             ].map((social, index) => (
               <motion.a
                 key={index}
@@ -228,7 +228,7 @@ const HeroSection = () => {
               <div className="text-xs text-gray-400">Users Reached</div>
             </div>
             <div className="cyber-card p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-electric-400 mb-1">3+</div>
+              <div className="text-2xl font-bold text-electric-400 mb-1">6+</div>
               <div className="text-xs text-gray-400">Years Coding</div>
             </div>
             <div className="cyber-card p-4 rounded-lg text-center">

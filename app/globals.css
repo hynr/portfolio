@@ -116,3 +116,7 @@ body {
   from, to { border-color: transparent }
   50% { border-color: #3b82f6 }
 }
+
+.grid-cols-15 {
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+}

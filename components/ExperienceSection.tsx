@@ -19,60 +19,57 @@ interface Experience {
 
 const experiences: Experience[] = [
   {
-    id: 'hzsr',
-    title: 'Software Engineer',
-    company: 'HZSR - Real Estate Data Intelligence Platform',
-    location: 'Remote',
-    period: 'Jul 2024 – Present',
-    type: 'Full-time',
-    description: 'Building scalable backend services and data pipelines for 100K+ real estate users',
+    id: 'ta-current',
+    title: 'Undergraduate Teaching Assistant',
+    company: 'University of Maryland, Baltimore County',
+    location: 'Baltimore, MD',
+    period: 'Aug 2024 – May 2025',
+    type: 'Part-time',
+    description: 'Teaching Data Structures & Algorithms to 300+ students using C++',
     achievements: [
-      'Developed and scaled backend services using Python (Django) and PostgreSQL',
-      'Re-architected data pipelines, cutting report generation time by 55%',
-      'Provisioned AWS infrastructure (EC2, Lambda, RDS, S3) using Terraform',
-      'Led CI/CD automation with Docker and Kubernetes (EKS) across multiple regions',
-      'Integrated national MLS APIs with OAuth2 for secure data ingestion',
-      'Deployed observability stack, reducing incident response from 2 hours to 12 minutes'
+      'Instructed 300+ students on object-oriented programming, recursion, memory, and algorithm analysis using C++',
+      'Built scripts using Bash and PowerShell to automate grading pipelines and handle ETL datasets',
+      'Used Linux, SSH, Git, and Emacs/Vim for systems-level debugging and code review training',
+      'Improved student understanding through hands-on coding sessions and office hours'
     ],
-    technologies: ['Python', 'Django', 'PostgreSQL', 'AWS', 'Docker', 'Kubernetes', 'Terraform', 'Prometheus', 'Grafana'],
-    icon: Cloud
+    technologies: ['C++', 'Bash', 'PowerShell', 'Linux', 'Git', 'SSH'],
+    icon: Users
   },
   {
-    id: 'sprouts',
-    title: 'Software Engineer Intern',
-    company: 'Sprouts Spot',
-    location: 'Clarksville, MD',
-    period: 'Sep 2023 – Dec 2023',
+    id: 'horizen',
+    title: 'Software Engineer',
+    company: 'Horizen Labs - Innovation Lab',
+    location: 'Remote',
+    period: 'Jun 2024 – Aug 2024',
     type: 'Internship',
-    description: 'Built internal dashboards and optimized backend performance for educational platform',
+    description: 'Developed proof-of-concept tools for early-stage crypto startups',
     achievements: [
-      'Built internal dashboards using React, Node.js, and TypeScript',
-      'Optimized 12+ queries and indexed PostgreSQL tables',
-      'Reduced backend latency from 10s to under 3s',
-      'Partnered with non-technical staff to automate scheduling workflows',
-      'Boosted internal platform adoption through user-friendly automation'
+      'Developed proof-of-concept tools for early-stage crypto startups, including a smart contract explorer and ID verification dashboard',
+      'Delivered MVPs using Python, React, and PostgreSQL, resulting in enhanced startup visibility',
+      'Helped secure investment interest valued at over $500K during demo day launches',
+      'Collaborated with founders on technical direction and investor presentations',
+      'Contributed to fast iterations under tight deadlines and helped teams prep product demos'
     ],
-    technologies: ['React', 'Node.js', 'TypeScript', 'PostgreSQL'],
+    technologies: ['Python', 'React', 'PostgreSQL', 'Smart Contracts', 'Web3'],
     icon: Code
   },
   {
-    id: 'ta',
-    title: 'Teaching Assistant – Data Structures and Algorithms',
-    company: 'University of Maryland, Baltimore County',
-    location: 'Baltimore, MD',
-    period: 'Aug 2023 – May 2024',
-    type: 'Part-time',
-    description: 'Taught core C++ concepts and automated grading workflows for 300+ students',
+    id: 'sprouts',
+    title: 'Front-End Engineer (Contract)',
+    company: 'Sprouts Spot Learning Center',
+    location: 'Catonsville, MD',
+    period: 'Sep 2023 – Dec 2023',
+    type: 'Contract',
+    description: 'Built interactive web features for class and calendar scheduling',
     achievements: [
-      'Taught core C++ concepts, recursion, and memory allocation to 300+ students',
-      'Improved course pass rate by 18% through effective instruction',
-      'Automated grading workflows using Bash/PowerShell scripting',
-      'Held weekly office hours and exam review sessions',
-      'Helped students strengthen foundational algorithmic thinking'
+      'Built interactive web features using React, JavaScript, and REST APIs for class and calendar scheduling',
+      'Reduced latency 30% by optimizing SQL queries and integrating with Angular-style modular endpoints',
+      'Collaborated with UX/UI designers and QA to deploy feature-complete updates following team testing plans',
+      'Enhanced user experience through responsive design and intuitive interfaces'
     ],
-    technologies: ['C++', 'Bash', 'PowerShell'],
-    icon: Users
-  }
+    technologies: ['React', 'JavaScript', 'REST APIs', 'SQL', 'Angular'],
+    icon: Code
+  },
 ]
 
 const ExperienceSection = () => {
