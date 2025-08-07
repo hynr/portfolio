@@ -1,0 +1,22 @@
+{
+  "name": "Huzaifa Naroo - Full Stack Engineer",
+  "short_name": "Huzaifa Naroo",
+  "description": "Portfolio of Huzaifa Naroo, Full Stack Engineer specializing in Python, Django, React, and AWS",
+  "start_url": "/portfolio/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/portfolio/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/portfolio/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
