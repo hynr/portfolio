@@ -105,7 +105,7 @@ const TicTacToe = () => {
     return null
   }
 
-  const handleClick = (index) => {
+  const handleClick = (index: number) => {
     if (board[index] || winner) return
     
     const newBoard = board.slice()
