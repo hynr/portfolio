@@ -2,68 +2,35 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Mail, Phone, MapPin, Send, Github, Linkedin, CheckCircle, AlertCircle } from 'lucide-react'
-
-interface FormData {
-  name: string
-  email: string
-  subject: string
-  message: string
-}
-
-interface FormStatus {
-  type: 'idle' | 'loading' | 'success' | 'error'
-  message: string
-}
+import { Mail, Phone, MapPin, Github, Linkedin, Coffee, GamepadIcon, RotateCcw, Trophy } from 'lucide-react'
 
 const ContactSection = () => {
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    subject: '',
-    message: ''
-  })
-  const [status, setStatus] = useState<FormStatus>({ type: 'idle', message: '' })
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    })
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setStatus({ type: 'loading', message: 'Sending message...' })
-
-    // Simulate form submission (replace with actual form handler)
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      setStatus({ type: 'success', message: 'Message sent successfully! I\'ll get back to you soon.' })
-      setFormData({ name: '', email: '', subject: '', message: '' })
-    } catch (error) {
-      setStatus({ type: 'error', message: 'Failed to send message. Please try again.' })
-    }
-  }
+  const [flipped, setFlipped] = useState(false)
+  const [gameScore, setGameScore] = useState(0)
+  const [clicks, setClicks] = useState(0)
+  const [gameActive, setGameActive] = useState(false)
 
   const contactInfo = [
     {
       icon: Mail,
       label: 'Email',
       value: 'huzaifanaroo1@gmail.com',
-      href: 'mailto:huzaifanaroo1@gmail.com'
+      href: 'mailto:huzaifanaroo1@gmail.com',
+      color: 'text-blue-400'
     },
     {
       icon: Phone,
       label: 'Phone',
       value: '443-883-5520',
-      href: 'tel:443-883-5520'
+      href: 'tel:443-883-5520',
+      color: 'text-green-400'
     },
     {
       icon: MapPin,
       label: 'Location',
       value: 'Columbia, MD',
-      href: 'https://maps.google.com/?q=Columbia,MD'
+      href: 'https://maps.google.com/?q=Columbia,MD',
+      color: 'text-red-400'
     }
   ]
 
@@ -72,19 +39,49 @@ const ContactSection = () => {
       icon: Github,
       label: 'GitHub',
       href: 'https://github.com/hynr',
-      color: 'hover:text-gray-300'
+      color: 'hover:text-gray-300',
+      username: '@hynr'
     },
     {
       icon: Linkedin,
       label: 'LinkedIn',
       href: 'https://linkedin.com/in/huzaifa-naroo',
-      color: 'hover:text-blue-400'
+      color: 'hover:text-blue-400',
+      username: 'huzaifa-naroo'
     }
   ]
 
+  const startGame = () => {
+    setGameActive(true)
+    setGameScore(0)
+    setClicks(0)
+    setTimeout(() => setGameActive(false), 10000) // 10 second game
+  }
+
+  const handleClick = () => {
+    if (gameActive) {
+      setClicks(clicks + 1)
+      setGameScore(gameScore + Math.floor(Math.random() * 100))
+    }
+  }
+
   return (
-    <section id="contact" className="py-20 bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="contact" className="py-20 bg-gray-900 relative overflow-hidden">
+      {/* Background Elements */}
+      <div className="absolute inset-0">
+        <motion.div
+          className="absolute top-20 left-20 w-40 h-40 bg-primary-500/5 rounded-full blur-3xl"
+          animate={{ x: [0, 50, 0], y: [0, -30, 0] }}
+          transition={{ duration: 15, repeat: Infinity }}
+        />
+        <motion.div
+          className="absolute bottom-20 right-20 w-60 h-60 bg-purple-500/5 rounded-full blur-3xl"
+          animate={{ x: [0, -40, 0], y: [0, 20, 0] }}
+          transition={{ duration: 20, repeat: Infinity }}
+        />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -92,224 +89,176 @@ const ContactSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">Let&apos;s Chat</span>
+            <span className="gradient-text">Get In Touch</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            Whether you want to discuss a cool project, talk tech, or explore opportunities together - 
-            I&apos;d love to connect! Drop me a message and let&apos;s see what we can build.
+            Always open to interesting conversations about tech, projects, or opportunities.
+            Feel free to reach out through any of these channels!
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          {/* Contact Information */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
+          {/* Contact Card */}
           <motion.div
             initial={{ opacity: 0, x: -50 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             className="space-y-8"
           >
-            <div>
-              <h3 className="text-2xl font-bold text-white mb-6">Get in Touch</h3>
-              <p className="text-gray-400 leading-relaxed mb-8">
-                I&apos;m always open to discussing new opportunities, interesting projects, 
-                or potential collaborations. Whether you&apos;re a recruiter looking for talent 
-                or a fellow developer wanting to connect, feel free to reach out!
-              </p>
+            {/* Flip Card */}
+            <div className="relative h-64 [perspective:1000px]">
+              <motion.div
+                className={`relative w-full h-full transition-all duration-700 [transform-style:preserve-3d] ${
+                  flipped ? '[transform:rotateY(180deg)]' : ''
+                }`}
+              >
+                {/* Front of card */}
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl border border-gray-700 p-8 flex flex-col justify-center">
+                  <div className="text-center">
+                    <Coffee size={48} className="text-primary-400 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-white mb-2">Huzaifa Naroo</h3>
+                    <p className="text-gray-400 mb-4">Full Stack Engineer</p>
+                    <button
+                      onClick={() => setFlipped(!flipped)}
+                      className="px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors"
+                    >
+                      Flip for Details
+                    </button>
+                  </div>
+                </div>
+
+                {/* Back of card */}
+                <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-gradient-to-br from-primary-900 to-gray-900 rounded-xl border border-primary-700 p-6">
+                  <div className="space-y-4 h-full flex flex-col justify-center">
+                    {contactInfo.map((item, index) => (
+                      <motion.a
+                        key={item.label}
+                        href={item.href}
+                        target={item.href.startsWith('http') ? '_blank' : undefined}
+                        rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                        className="flex items-center space-x-3 text-white hover:text-primary-300 transition-colors"
+                        whileHover={{ scale: 1.02, x: 5 }}
+                      >
+                        <item.icon size={20} className={item.color} />
+                        <span className="text-sm">{item.value}</span>
+                      </motion.a>
+                    ))}
+                    <button
+                      onClick={() => setFlipped(!flipped)}
+                      className="mt-4 text-primary-300 text-sm hover:text-primary-200 transition-colors"
+                    >
+                      ← Flip back
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
             </div>
 
-            {/* Contact Info */}
-            <div className="space-y-6">
-              {contactInfo.map((item, index) => (
+            {/* Social Links */}
+            <div className="space-y-4">
+              <h4 className="text-lg font-semibold text-white">Find Him Online</h4>
+              {socialLinks.map((social, index) => (
                 <motion.a
-                  key={item.label}
-                  href={item.href}
-                  target={item.href.startsWith('http') ? '_blank' : undefined}
-                  rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                  key={social.label}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   initial={{ opacity: 0, x: -30 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: index * 0.1 }}
                   whileHover={{ scale: 1.02, x: 10 }}
-                  className="flex items-center space-x-4 p-4 bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 hover:border-primary-500/50 transition-all duration-300 group"
+                  className={`flex items-center space-x-4 p-4 bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 hover:border-primary-500/50 transition-all duration-300 text-gray-400 ${social.color}`}
                 >
-                  <div className="p-3 bg-primary-500/20 rounded-lg group-hover:bg-primary-500/30 transition-colors duration-300">
-                    <item.icon size={24} className="text-primary-400" />
-                  </div>
+                  <social.icon size={24} />
                   <div>
-                    <p className="text-sm text-gray-400">{item.label}</p>
-                    <p className="text-white font-medium">{item.value}</p>
+                    <div className="font-medium text-white">{social.label}</div>
+                    <div className="text-sm text-gray-400">{social.username}</div>
                   </div>
                 </motion.a>
               ))}
             </div>
-
-            {/* Social Links */}
-            <div className="pt-8">
-              <h4 className="text-lg font-semibold text-white mb-4">Follow Me</h4>
-              <div className="flex space-x-4">
-                {socialLinks.map((social, index) => (
-                  <motion.a
-                    key={social.label}
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: index * 0.1 }}
-                    whileHover={{ scale: 1.1, y: -5 }}
-                    className={`p-4 bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 hover:border-primary-500/50 transition-all duration-300 text-gray-400 ${social.color}`}
-                  >
-                    <social.icon size={24} />
-                  </motion.a>
-                ))}
-              </div>
-            </div>
-
-            {/* Quick Stats */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-6 border border-gray-700 mt-8"
-            >
-              <h4 className="text-lg font-semibold text-white mb-4">Quick Stats</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary-400">24h</div>
-                  <div className="text-sm text-gray-400">Response Time</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary-400">100%</div>
-                  <div className="text-sm text-gray-400">Project Success</div>
-                </div>
-              </div>
-            </motion.div>
           </motion.div>
 
-          {/* Contact Form */}
+          {/* Fun Mini Game */}
           <motion.div
             initial={{ opacity: 0, x: 50 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             className="bg-gray-800/50 backdrop-blur-sm rounded-lg p-8 border border-gray-700"
           >
-            <h3 className="text-2xl font-bold text-white mb-6">Send a Message</h3>
-            
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
-                    Name *
-                  </label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200"
-                    placeholder="Your name"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200"
-                    placeholder="your.email@example.com"
-                  />
-                </div>
-              </div>
+            <div className="text-center mb-6">
+              <GamepadIcon size={48} className="text-primary-400 mx-auto mb-4" />
+              <h3 className="text-2xl font-bold text-white mb-2">Click Challenge</h3>
+              <p className="text-gray-400 text-sm">
+                Think you&apos;re fast? Test your clicking speed in 10 seconds!
+              </p>
+            </div>
 
-              <div>
-                <label htmlFor="subject" className="block text-sm font-medium text-gray-300 mb-2">
-                  Subject *
-                </label>
-                <input
-                  type="text"
-                  id="subject"
-                  name="subject"
-                  value={formData.subject}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200"
-                  placeholder="What's this about?"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="message" className="block text-sm font-medium text-gray-300 mb-2">
-                  Message *
-                </label>
-                <textarea
-                  id="message"
-                  name="message"
-                  value={formData.message}
-                  onChange={handleChange}
-                  required
-                  rows={6}
-                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-transparent text-white placeholder-gray-400 transition-all duration-200 resize-none"
-                  placeholder="Tell me about your project or opportunity..."
-                />
-              </div>
-
-              {/* Status Message */}
-              {status.type !== 'idle' && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`p-4 rounded-lg border flex items-center space-x-3 ${
-                    status.type === 'success'
-                      ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                      : status.type === 'error'
-                      ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                      : 'bg-primary-500/10 border-primary-500/30 text-primary-400'
-                  }`}
-                >
-                  {status.type === 'success' && <CheckCircle size={20} />}
-                  {status.type === 'error' && <AlertCircle size={20} />}
-                  {status.type === 'loading' && (
-                    <div className="w-5 h-5 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  <p className="text-sm">{status.message}</p>
-                </motion.div>
-              )}
-
-              <motion.button
-                type="submit"
-                disabled={status.type === 'loading'}
-                whileHover={{ scale: status.type === 'loading' ? 1 : 1.02 }}
-                whileTap={{ scale: status.type === 'loading' ? 1 : 0.98 }}
-                className={`w-full py-3 px-6 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
-                  status.type === 'loading'
-                    ? 'bg-gray-600 cursor-not-allowed'
-                    : 'bg-primary-500 hover:bg-primary-600 shadow-lg hover:shadow-primary-500/25'
-                } text-white`}
-              >
-                {status.type === 'loading' ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Sending...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send size={20} />
-                    <span>Send Message</span>
-                  </>
+            {!gameActive ? (
+              <div className="text-center space-y-4">
+                {gameScore > 0 && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="bg-primary-500/20 border border-primary-500/30 rounded-lg p-4 mb-4"
+                  >
+                    <Trophy size={24} className="text-primary-400 mx-auto mb-2" />
+                    <div className="text-white font-bold">Final Score: {gameScore}</div>
+                    <div className="text-gray-400 text-sm">{clicks} clicks in 10 seconds</div>
+                  </motion.div>
                 )}
-              </motion.button>
-            </form>
+                <button
+                  onClick={startGame}
+                  className="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  {gameScore > 0 ? 'Play Again' : 'Start Game'}
+                </button>
+              </div>
+            ) : (
+              <div className="text-center space-y-4">
+                <div className="text-3xl font-bold text-primary-400">Score: {gameScore}</div>
+                <div className="text-gray-400">Clicks: {clicks}</div>
+                <motion.button
+                  onClick={handleClick}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full py-8 bg-gradient-to-r from-primary-500 to-purple-600 hover:from-primary-600 hover:to-purple-700 text-white rounded-lg font-bold text-xl transition-all duration-200 shadow-lg hover:shadow-primary-500/25"
+                >
+                  CLICK ME!
+                </motion.button>
+                <div className="text-sm text-gray-500">Keep clicking as fast as you can!</div>
+              </div>
+            )}
           </motion.div>
         </div>
+
+        {/* Fun Stats */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="mt-16 text-center"
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">☕</div>
+              <div className="text-gray-300 text-sm">Coffee Driven</div>
+            </div>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">🌙</div>
+              <div className="text-gray-300 text-sm">Night Owl Coder</div>
+            </div>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">🚀</div>
+              <div className="text-gray-300 text-sm">Always Shipping</div>
+            </div>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-4 border border-gray-700/50">
+              <div className="text-2xl font-bold text-primary-400 mb-1">📚</div>
+              <div className="text-gray-300 text-sm">Lifelong Learner</div>
+            </div>
+          </div>
+        </motion.div>
       </div>
     </section>
   )

@@ -87,10 +87,10 @@ const SkillsSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">Technical Skills</span>
+            <span className="gradient-text">His Toolkit</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            Comprehensive expertise across modern technologies and development practices
+            The technologies he&apos;s passionate about and uses to bring ideas to life
           </p>
         </motion.div>
 

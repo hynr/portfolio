@@ -134,9 +134,10 @@ const HeroSection = () => {
             transition={{ delay: 0.8 }}
             className="text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed"
           >
-            I&apos;m passionate about building scalable solutions that make a real impact. 
-            Currently pursuing my CS degree at UMBC while working at HZSR, where I&apos;ve helped 
-            optimize systems serving 100K+ users. I love tackling complex challenges in{' '}
+            A passionate engineer who loves building things that matter. Currently pursuing his 
+            CS degree at UMBC while working at HZSR, where he&apos;s helped optimize systems 
+            serving 100K+ users. When he&apos;s not coding, you&apos;ll find him exploring new 
+            technologies in{' '}
             <span className="text-primary-400 font-semibold">backend engineering</span>,{' '}
             <span className="text-primary-400 font-semibold">cloud infrastructure</span>, and{' '}
             <span className="text-primary-400 font-semibold">AI/ML</span>.
@@ -177,13 +178,13 @@ const HeroSection = () => {
               onClick={() => scrollToSection('projects')}
               className="px-8 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-primary-500/25"
             >
-              Check Out My Projects
+              View His Work
             </button>
             <button
-              onClick={() => scrollToSection('contact')}
+              onClick={() => scrollToSection('skills')}
               className="px-8 py-3 border border-gray-600 hover:border-primary-400 text-gray-300 hover:text-primary-400 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
             >
-              Get In Touch
+              Explore Skills
             </button>
           </motion.div>
 

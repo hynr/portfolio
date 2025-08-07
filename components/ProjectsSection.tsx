@@ -100,11 +100,11 @@ const ProjectsSection = () => {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="gradient-text">Things I&apos;ve Built</span>
+            <span className="gradient-text">Things He&apos;s Built</span>
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
             From AI-powered therapy tools to real-time sign language translation - 
-            here are some projects I&apos;m proud of
+            projects that showcase his passion for solving real-world problems
           </p>
         </motion.div>
 

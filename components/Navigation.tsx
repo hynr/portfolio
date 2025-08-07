@@ -14,10 +14,10 @@ const Navigation = ({ activeSection }: NavigationProps) => {
 
   const navItems = [
     { id: 'hero', label: 'Home' },
-    { id: 'experience', label: 'Experience' },
+    { id: 'experience', label: 'Journey' },
     { id: 'projects', label: 'Projects' },
     { id: 'skills', label: 'Skills' },
-    { id: 'contact', label: 'Contact' },
+    { id: 'contact', label: 'Connect' },
   ]
 
   useEffect(() => {
