@@ -1,0 +1,181 @@
+/* Content site — typography rhythm, reveal motion, sprite atomics. */
+/* No gradients. No glassmorphism. No skill bars. */
+
+.content-mode {
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+/* ---- Typography rhythm ---- */
+.content-mode h1,
+.content-mode h2,
+.content-mode h3 {
+  font-family: var(--font-sans, inherit);
+  font-feature-settings: "ss01", "cv11";
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.content-mode .mono {
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", "SF Mono", monospace);
+  font-feature-settings: "calt" 0;
+  letter-spacing: -0.01em;
+}
+
+/* ---- Section rhythm — varied, not uniform ---- */
+.section-py-hero    { padding-block: clamp(4rem, 12vh, 9rem); }
+.section-py-tight   { padding-block: clamp(3rem, 8vh, 5rem); }
+.section-py-default { padding-block: clamp(4rem, 10vh, 7rem); }
+.section-py-loose   { padding-block: clamp(5rem, 14vh, 9rem); }
+
+/* ---- Reading column ---- */
+.col-reading { max-width: 70ch; }
+.col-wide    { max-width: 1200px; }
+
+/* ---- Reveal-on-scroll: opacity + 12px lift, intersection-driven ---- */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-1 { transition-delay: 60ms; }
+.reveal-2 { transition-delay: 140ms; }
+.reveal-3 { transition-delay: 220ms; }
+.reveal-4 { transition-delay: 300ms; }
+.reveal-5 { transition-delay: 380ms; }
+
+/* ---- Bob (ambient sprite) — 2px vertical, slow ---- */
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+.anim-bob { animation: bob 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+
+/* ---- Coin spin (faceted card flip) ---- */
+@keyframes coin-spin {
+  0%   { transform: rotateY(0deg);  }
+  50%  { transform: rotateY(180deg);}
+  100% { transform: rotateY(360deg);}
+}
+.anim-coin-spin {
+  animation: coin-spin 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-style: preserve-3d;
+}
+
+/* ---- Pipe warp transition (cover from top down) ---- */
+@keyframes warp-cover {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(0);     }
+}
+.anim-warp-cover { animation: warp-cover 350ms cubic-bezier(0.85, 0, 0.15, 1) forwards; }
+
+/* ---- 1UP toast: float up + fade, exponential ---- */
+@keyframes oneup-float {
+  0%   { transform: translateY(0) scale(1);     opacity: 1; }
+  60%  { transform: translateY(-22px) scale(1); opacity: 1; }
+  100% { transform: translateY(-44px) scale(0.96); opacity: 0; }
+}
+.anim-oneup { animation: oneup-float 1100ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* ---- Underline wipe for links — left to right ---- */
+.link-wipe {
+  position: relative;
+  color: var(--brick);
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  transition: background-size 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.link-wipe:hover {
+  background-size: 100% 2px;
+}
+.link-wipe.link-pipe { color: var(--pipe-deep); }
+.link-wipe.link-sky  { color: var(--sky-deep);  }
+
+/* ---- Project module hover ---- */
+.proj-module {
+  transition:
+    transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.proj-module:hover .proj-kicker {
+  color: var(--coin-deep);
+}
+.proj-module:hover {
+  transform: translateY(-2px);
+}
+
+.proj-kicker {
+  color: var(--brick);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: color 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---- Mono tags (tech stack) ---- */
+.tech-tag {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+
+/* ---- Form fields ---- */
+.field-input,
+.field-textarea {
+  width: 100%;
+  font-size: 1rem;
+  background: var(--surface);
+  color: var(--ink);
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 0 10px;
+  outline: none;
+  transition: border-color 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+}
+.field-input:focus,
+.field-textarea:focus {
+  border-bottom-color: var(--brick);
+  outline: none;
+}
+.field-textarea { resize: vertical; min-height: 7rem; }
+
+.field-label {
+  display: block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+/* ---- Pixel-grid sprite container — never anti-aliased ---- */
+.pixel {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  shape-rendering: crispEdges;
+}
+
+/* ---- Cloud drift — slow, very gentle horizontal travel ---- */
+@keyframes cloud-drift {
+  0%   { transform: translateX(0); }
+  50%  { transform: translateX(12px); }
+  100% { transform: translateX(0); }
+}
+.anim-cloud-drift { animation: cloud-drift 18s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.anim-cloud-drift-slow { animation: cloud-drift 26s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
