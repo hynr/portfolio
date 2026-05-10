@@ -11,7 +11,15 @@ type FormState = {
   message: string
 }
 
+const findLink = (type: typeof PORTFOLIO_DATA.links[number]['type']) =>
+  PORTFOLIO_DATA.links.find((l) => l.type === type)
+
+const stripUrlScheme = (url: string) =>
+  url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+
 export default function Contact() {
+  const githubLink = findLink('github')
+  const linkedinLink = findLink('linkedin')
   const [form, setForm] = useState<FormState>({ name: '', email: '', message: '' })
   const [sent, setSent] = useState(false)
   const [oneUpKey, setOneUpKey] = useState(0)
@@ -78,42 +86,46 @@ export default function Contact() {
                   </p>
                   <a
                     href={`mailto:${PORTFOLIO_DATA.bio.email}`}
-                    className="link-wipe text-lg text-ink"
+                    className="link-wipe text-lg text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
                   >
                     {PORTFOLIO_DATA.bio.email}
                   </a>
                 </li>
-                <li>
-                  <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
-                    GitHub
-                  </p>
-                  <a
-                    href="https://github.com/hynr"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-wipe link-pipe text-lg"
-                  >
-                    github.com/hynr
-                  </a>
-                </li>
-                <li>
-                  <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
-                    LinkedIn
-                  </p>
-                  <a
-                    href="https://linkedin.com/in/huzaifa-naroo"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-wipe link-sky text-lg"
-                  >
-                    linkedin.com/in/huzaifa-naroo
-                  </a>
-                </li>
+                {githubLink && (
+                  <li>
+                    <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
+                      GitHub
+                    </p>
+                    <a
+                      href={githubLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link-wipe link-pipe text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
+                    >
+                      {stripUrlScheme(githubLink.url)}
+                    </a>
+                  </li>
+                )}
+                {linkedinLink && (
+                  <li>
+                    <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
+                      LinkedIn
+                    </p>
+                    <a
+                      href={linkedinLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link-wipe link-sky text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
+                    >
+                      {stripUrlScheme(linkedinLink.url)}
+                    </a>
+                  </li>
+                )}
                 <li>
                   <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
                     Based in
                   </p>
-                  <p className="text-lg text-ink">Columbia, MD · open to remote</p>
+                  <p className="text-lg text-ink">{PORTFOLIO_DATA.bio.location} · open to remote</p>
                 </li>
               </ul>
             </Reveal>
@@ -165,7 +177,7 @@ export default function Contact() {
                   <div className="flex items-center gap-6 pt-2">
                     <button
                       type="submit"
-                      className="relative inline-flex items-center gap-3 px-7 py-3 bg-pipe text-white font-medium rounded-sm hover:bg-pipe-deep transition-colors duration-200 ease-out-quart"
+                      className="relative inline-flex items-center gap-3 px-7 py-3 bg-pipe text-white font-medium rounded-sm hover:bg-pipe-deep transition-colors duration-200 ease-out-quart focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coin-deep"
                     >
                       Send it
                       <span aria-hidden>→</span>
@@ -199,13 +211,15 @@ export default function Contact() {
                   </p>
                   <a
                     href={`mailto:${PORTFOLIO_DATA.bio.email}`}
-                    className="link-wipe text-lg"
+                    className="link-wipe text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
                   >
                     {PORTFOLIO_DATA.bio.email}
                   </a>
                   <button
+                    type="button"
                     onClick={() => setSent(false)}
-                    className="block mt-6 font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft hover:text-brick transition-colors"
+                    aria-label="Compose another message"
+                    className="block mt-6 font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft hover:text-brick transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coin-deep rounded-sm"
                   >
                     Write another →
                   </button>

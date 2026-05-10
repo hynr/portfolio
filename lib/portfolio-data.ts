@@ -37,6 +37,8 @@ export interface Bio {
   mission: string
   status: string
   email: string
+  url: string
+  description: string
   summary: string
   highlights: string[]
 }
@@ -61,6 +63,9 @@ export const PORTFOLIO_DATA = {
     mission: 'Building systems that serve 100K+ users',
     status: 'Always learning, always building',
     email: 'huzaifa478@gmail.com',
+    url: 'https://hynr.github.io/portfolio',
+    description:
+      'Full-stack engineer at the seam of AI and product. Six years shipping clinical AI, real-time analytics, and serverless data pipelines reaching 100K+ users.',
     summary: 'Software Engineer specializing in Python, React, AWS, and AI/ML with 6+ years of experience building scalable applications and data-driven solutions.',
     highlights: [
       '100K+ users reached',

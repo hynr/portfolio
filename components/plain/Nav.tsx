@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import PipeWarp from './PipeWarp'
+import { PORTFOLIO_DATA } from '@/lib/portfolio-data'
 
 type Props = {
   onSwitchMode: () => void
@@ -37,7 +38,7 @@ export default function Nav({ onSwitchMode }: Props) {
           href="#top"
           className="flex items-baseline gap-2 text-ink no-underline hover:text-brick-deep transition-colors duration-200"
         >
-          <span className="text-base font-semibold tracking-tight">Huzaifa Naroo</span>
+          <span className="text-base font-semibold tracking-tight">{PORTFOLIO_DATA.bio.name}</span>
           <span className="hidden sm:inline font-mono text-[0.72rem] uppercase tracking-[0.14em] text-ink-soft">
             engineer
           </span>
