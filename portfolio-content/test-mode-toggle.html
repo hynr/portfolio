@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mode Toggle Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .button { padding: 10px 20px; margin: 10px; background: #0ea5e9; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .status { margin: 10px 0; padding: 10px; background: #f0f9ff; border-left: 4px solid #0ea5e9; }
+        .warning { background: #fef3c7; border-left-color: #f59e0b; }
+        .success { background: #ecfdf5; border-left-color: #10b981; }
+    </style>
+</head>
+<body>
+    <h1>Portfolio Mode Toggle Test</h1>
+    
+    <div class="status" id="currentMode">
+        Current mode: <span id="modeDisplay">content</span>
+    </div>
+    
+    <div class="status" id="motionStatus">
+        Prefers reduced motion: <span id="motionDisplay">checking...</span>
+    </div>
+    
+    <div class="status" id="storageStatus">
+        LocalStorage support: <span id="storageDisplay">checking...</span>
+    </div>
+    
+    <button class="button" onclick="toggleMode()">Toggle Mode</button>
+    <button class="button" onclick="clearStorage()">Clear Storage</button>
+    
+    <h2>Test Results</h2>
+    <div id="testResults"></div>
+
+    <script>
+        // Mode toggle functions (copied from lib/mode-toggle.ts logic)
+        function getModePreference() {
+            if (typeof localStorage === 'undefined') return 'content'
+            return localStorage.getItem('portfolio-mode') || 'content'
+        }
+
+        function setModePreference(mode) {
+            localStorage.setItem('portfolio-mode', mode)
+        }
+
+        // Test state
+        let currentMode = 'content'
+        let prefersReducedMotion = false
+
+        // Initialize
+        function init() {
+            // Check localStorage support
+            const storageSupported = typeof(Storage) !== "undefined"
+            document.getElementById('storageDisplay').textContent = storageSupported ? 'Yes' : 'No'
+            document.getElementById('storageStatus').className = storageSupported ? 'status success' : 'status warning'
+
+            // Load saved preference
+            currentMode = getModePreference()
+            updateModeDisplay()
+
+            // Check reduced motion preference
+            const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+            prefersReducedMotion = mediaQuery.matches
+            updateMotionDisplay()
+
+            // Listen for changes
+            mediaQuery.addEventListener('change', (e) => {
+                prefersReducedMotion = e.matches
+                updateMotionDisplay()
+                if (e.matches && currentMode === 'game') {
+                    currentMode = 'content'
+                    setModePreference('content')
+                    updateModeDisplay()
+                    addTestResult('Auto-switched to content mode due to reduced motion preference', 'success')
+                }
+            })
+
+            addTestResult('Initialization complete', 'success')
+        }
+
+        function updateModeDisplay() {
+            document.getElementById('modeDisplay').textContent = currentMode
+        }
+
+        function updateMotionDisplay() {
+            document.getElementById('motionDisplay').textContent = prefersReducedMotion ? 'Yes' : 'No'
+            document.getElementById('motionStatus').className = prefersReducedMotion ? 'status warning' : 'status'
+        }
+
+        function toggleMode() {
+            if (prefersReducedMotion && currentMode === 'content') {
+                alert('Game mode disabled: prefers-reduced-motion is enabled')
+                addTestResult('Game mode blocked due to reduced motion preference', 'warning')
+                return
+            }
+
+            const newMode = currentMode === 'content' ? 'game' : 'content'
+            currentMode = newMode
+            setModePreference(newMode)
+            updateModeDisplay()
+            addTestResult(`Mode switched to: ${newMode}`, 'success')
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('portfolio-mode')
+            currentMode = 'content'
+            updateModeDisplay()
+            addTestResult('Storage cleared, reset to content mode', 'success')
+        }
+
+        function addTestResult(message, type = '') {
+            const resultsDiv = document.getElementById('testResults')
+            const result = document.createElement('div')
+            result.className = `status ${type}`
+            result.textContent = `${new Date().toLocaleTimeString()}: ${message}`
+            resultsDiv.appendChild(result)
+        }
+
+        // Run tests on load
+        window.onload = init
+    </script>
+</body>
+</html>
