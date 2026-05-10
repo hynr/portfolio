@@ -29,10 +29,6 @@
 .section-py-default { padding-block: clamp(4rem, 10vh, 7rem); }
 .section-py-loose   { padding-block: clamp(5rem, 14vh, 9rem); }
 
-/* ---- Reading column ---- */
-.col-reading { max-width: 70ch; }
-.col-wide    { max-width: 1200px; }
-
 /* ---- Reveal-on-scroll: opacity + 12px lift, intersection-driven ---- */
 .reveal {
   opacity: 0;

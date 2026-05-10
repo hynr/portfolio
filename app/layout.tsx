@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
-import '@/styles/sprites.css'
-import '@/styles/game.css'
 import '@/styles/content.css'
 
 const inter = Inter({
@@ -17,10 +15,13 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 })
 
-// Press Start 2P retained for game-mode UI only
-const pressStart2P = `
-  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-`
+// Press Start 2P is self-hosted from /public/fonts/. Declared with
+// font-display: swap and no preload link, so the woff2 is only fetched
+// when something actually paints with the family — i.e. when game-mode
+// mounts and the canvas HUD calls fillText. Content-mode never triggers
+// the fetch.
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
+const pressStart2PFace = `@font-face{font-family:'Press Start 2P';font-style:normal;font-weight:400;font-display:swap;src:url('${basePath}/fonts/PressStart2P-Regular.woff2') format('woff2');}`
 
 export const metadata: Metadata = {
   title: 'Huzaifa Naroo · Engineer',
@@ -36,7 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
-        <style dangerouslySetInnerHTML={{ __html: pressStart2P }} />
+        <style dangerouslySetInnerHTML={{ __html: pressStart2PFace }} />
       </head>
       <body>{children}</body>
     </html>
