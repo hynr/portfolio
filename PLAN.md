@@ -402,7 +402,7 @@ silently leaves the footer and nav stale.
 **Risk:** Trivial. Mechanical swaps.
 
 ### 8. Ship `public/robots.txt`
-**Status:** pending
+**Status:** done — three-line `robots.txt` allowing all crawlers + sitemap pointer at `https://hynr.github.io/portfolio/sitemap.xml`. If bundle agent doesn't ship a sitemap, the `Sitemap:` line is harmless (crawlers ignore unreachable sitemaps).
 **Files:** `public/robots.txt` (new).
 **Change:** Two-line robots.txt: `User-agent: *` + `Allow: /` +
 `Sitemap: https://hynr.github.io/portfolio/sitemap.xml` (sitemap
