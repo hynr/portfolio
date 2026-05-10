@@ -148,7 +148,7 @@ committing. Filename-suffix change in option (a) means a
   runtime dep, so it doesn't hit the bundle.
 
 ### 5. Delete `styles/sprites.css` and drop its `@import`
-**Status:** pending
+**Status:** done — file deleted, import removed from `app/layout.tsx`. Grep confirmed no references in `app/` or `components/plain/` (the active path); only stale references live in `components/sprites/*`, which are dead code the perf agent owns deleting.
 **Files:** `styles/sprites.css` (delete), `app/layout.tsx` (remove
 import line 4).
 **Verification:** `grep -rn "sprites.css\|sprite-pixel-perfect\|
