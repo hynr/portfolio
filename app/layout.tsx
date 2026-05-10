@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
+import { PORTFOLIO_DATA } from '@/lib/portfolio-data'
 import './globals.css'
 import '@/styles/sprites.css'
 import '@/styles/game.css'
@@ -22,10 +23,90 @@ const pressStart2P = `
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 `
 
+const { bio, links } = PORTFOLIO_DATA
+const siteName = `${bio.name} · ${bio.title}`
+const pageTitle = `${bio.name} · Engineer`
+const githubUrl = links.find((l) => l.type === 'github')?.url
+const linkedinUrl = links.find((l) => l.type === 'linkedin')?.url
+const sameAs = [githubUrl, linkedinUrl].filter((u): u is string => Boolean(u))
+
 export const metadata: Metadata = {
-  title: 'Huzaifa Naroo · Engineer',
-  description:
-    'Full-stack engineer at the seam of AI and product. Currently shipping HZSR. The Mario mode lives here for the same reason this site does.',
+  metadataBase: new URL(bio.url),
+  title: {
+    default: pageTitle,
+    template: `%s · ${bio.name}`,
+  },
+  description: bio.description,
+  keywords: [
+    'Huzaifa Naroo',
+    'Software Engineer',
+    'Full-Stack Developer',
+    'AI Engineer',
+    'Python',
+    'TypeScript',
+    'React',
+    'Next.js',
+    'AWS',
+    'OpenAI',
+    'Portfolio',
+  ],
+  authors: [{ name: bio.name, url: bio.url }],
+  creator: bio.name,
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    url: bio.url,
+    siteName,
+    title: pageTitle,
+    description: bio.description,
+    locale: 'en_US',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: `${bio.name} — ${bio.title}`,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: pageTitle,
+    description: bio.description,
+    images: ['/og-image.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
+}
+
+const personJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  name: bio.name,
+  url: bio.url,
+  jobTitle: bio.title,
+  email: `mailto:${bio.email}`,
+  description: bio.description,
+  worksFor: {
+    '@type': 'Organization',
+    name: bio.company,
+  },
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: bio.location,
+  },
+  sameAs,
 }
 
 export default function RootLayout({
@@ -37,6 +118,10 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: pressStart2P }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+        />
       </head>
       <body>{children}</body>
     </html>

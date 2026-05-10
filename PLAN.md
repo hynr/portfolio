@@ -129,7 +129,7 @@ JSON-LD + OG meta will drift the moment the canonical URL changes
 doesn't break existing readers. No call site removes a field.
 
 ### 1. Replace `metadata` export with full SEO + add JSON-LD `Person` schema
-**Status:** pending
+**Status:** done — full `metadata` export (`metadataBase`, title template, description, keywords, authors, OG, Twitter, robots, canonical) + JSON-LD `Person` `<script>` next to the existing `pressStart2P` `<style>` in `<head>`. All values pulled from `PORTFOLIO_DATA.bio` + `PORTFOLIO_DATA.links`. Did not touch the font block or the `<html>` className.
 **Files:** `app/layout.tsx` (lines 25–29 only, plus a sibling
 `<script type="application/ld+json">` next to the existing
 `<style>` at line 39).
