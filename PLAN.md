@@ -381,6 +381,16 @@ introduces any TS errors, they'll surface when item 4 here lands. I'll
 list them in the cross-cutting findings block above and ping you, not
 silently fix in your file.
 
+**New finding from my bundle-analyzer audit (item 8 / REPORT.md):**
+`lib/audio.ts` is currently shipped into the content-mode page chunk
+(`app/page-*.js`) because `components/plain/Contact.tsx` and
+`components/plain/PipeWarp.tsx` and `lib/navigation.ts` all import
+`playSound`. Your PLAN item 2 (lazy `AudioContext`) addresses runtime
+cost but the module *bytes* still ship at first-load. A deeper fix —
+lazy-importing `playSound` inside the click handlers — would remove
+~5 KB raw / ~2 KB gz from content-mode first-load. Borderline win;
+not a blocker. Yours to take or punt.
+
 ## Cross-cutting note for opt/portfolio
 
 When you ship the `metadata` export expansion, no `next.config.js`
@@ -389,6 +399,19 @@ Router export. If you add `metadataBase`, just confirm the URL is
 right for the GitHub Pages basePath (`https://hynr.github.io/portfolio`).
 
 I do not touch `app/layout.tsx` at all.
+
+**New finding from my bundle-analyzer audit (item 8 / REPORT.md):**
+`lib/portfolio-data.ts` and `lib/level-data.ts` both contain parallel
+project descriptions ("Therasort", "AWS Data Processing", etc.). The
+strings ship to **both** chunks because they live in **both source
+files** — not a tree-shake bug, a content-duplication bug. When you
+edit project copy for the content site, you must also edit
+`lib/level-data.ts` `projects[]` or the game and content go out of
+sync. Cleanest fix: have `lib/level-data.ts` import project objects
+by ID from `lib/portfolio-data.ts` and add only the game-only fields
+(x position, etc.). Out of bundle's scope; flagging because your
+PLAN's content-bridge work (game progress reveals projects in
+content) will care about this.
 
 ## Cross-cutting note for opt/gameplay
 
@@ -408,9 +431,9 @@ single canonical script.
 - [x] Item 4 — re-enable type/lint — done; 26 errors surface, ALL in files perf will delete (see findings above). Build red on opt/bundle until perf merges; then green.
 - [x] Item 5 — eslint tighten — done; only added `react/no-unescaped-entities: off` (light touch; portfolio's copy edits would otherwise trip it)
 - [x] Item 6 — scripts + dev-deps + analyzer wiring — done; added typecheck/build:gh/analyze/test scripts; tsx + @next/bundle-analyzer dev-deps installed (both pre-approved); next.config.js wraps in withBundleAnalyzer gated on ANALYZE=true
-- [ ] Item 7 — deploy artifact smoke check
-- [ ] Item 8 — bundle analyzer (pending decision)
-- [ ] Item 9 — Lighthouse measurement (pending sibling merges)
-- [ ] Item 10 — CI fail-loud verification
+- [x] Item 7 — deploy artifact smoke check — done; .nojekyll/index.html/basePath/sounds all OK (recorded in REPORT.md)
+- [x] Item 8 — bundle analyzer audit — done; PORTFOLIO_DATA + level_1_1 each in single chunk; lib/audio.ts ships to content-mode (cross-cutting note for assets); duplicate project copy in portfolio-data.ts ↔ level-data.ts (cross-cutting note for portfolio)
+- [ ] Item 9 — Lighthouse measurement — deferred to post-rebase (depends on perf's rAF fix + assets' fonts)
+- [ ] Item 10 — CI fail-loud verification — procedure documented in REPORT.md; lead executes post-merge
 
 **STOP.** Awaiting human approval before any code edits.
