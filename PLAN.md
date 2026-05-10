@@ -284,7 +284,7 @@ Targets per BRIEF:
 | 1 | Hoist state to `useRef` | done | rAF effect dep array now `[]`; player/camera/hitBlocks/blockAnims/coinAnims/collectedCoins on refs; HUD reads `collectedCoinCount`. Static-export build passes (106 kB first-load JS, baseline). |
 | 2 | Sprite atlas + `drawImage` | pending | — |
 | 3 | Hoist static lookups | done | QUESTION_BLOCKS / QUESTION_INDEX_BY_XY / BUSH_DECORATIONS hoisted to module scope; sky gradient cached in useEffect. drawPlatforms O(n²) findIndex replaced with O(1) Map lookup. |
-| 4 | Eliminate hot-path allocs | pending | — |
+| 4 | Eliminate hot-path allocs | done | hits/collected → Uint8Array; blockAnims/coinAnims → fixed pools (size 8); spawn/end mutate `active` flag instead of push/splice; hot-path forEach → for loops. |
 | 5 | DPR-aware canvas | pending | — |
 | 6 | Delete dead code | pending | — |
 | 7 | Sprite-atlas smoke test | pending | — |

@@ -77,6 +77,7 @@ interface Player {
 }
 
 interface BlockAnimation {
+  active: boolean
   id: number
   y: number
   originalY: number
@@ -84,10 +85,31 @@ interface BlockAnimation {
 }
 
 interface CoinAnimation {
+  active: boolean
   x: number
   y: number
   velY: number
   lifetime: number
+}
+
+// Fixed-capacity pools so animation spawn/end don't allocate.
+// Level 1-1 has 4 question blocks; 8 slots per pool is plenty.
+const ANIM_POOL_SIZE = 8
+
+function makeBlockAnimPool(): BlockAnimation[] {
+  const arr: BlockAnimation[] = new Array(ANIM_POOL_SIZE)
+  for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+    arr[i] = { active: false, id: 0, y: 0, originalY: 0, animTime: 0 }
+  }
+  return arr
+}
+
+function makeCoinAnimPool(): CoinAnimation[] {
+  const arr: CoinAnimation[] = new Array(ANIM_POOL_SIZE)
+  for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+    arr[i] = { active: false, x: 0, y: 0, velY: 0, lifetime: 0 }
+  }
+  return arr
 }
 
 export default function SimpleMarioGame() {
@@ -116,10 +138,11 @@ export default function SimpleMarioGame() {
     scaleY: 1
   })
   const cameraRef = useRef({ x: 0, y: 0 })
-  const collectedCoinsRef = useRef<Set<number>>(new Set())
-  const hitBlocksRef = useRef<Set<number>>(new Set())
-  const blockAnimationsRef = useRef<BlockAnimation[]>([])
-  const coinAnimationsRef = useRef<CoinAnimation[]>([])
+  // Membership flags as typed arrays — no Set/array growth on the hot path.
+  const collectedCoinsRef = useRef<Uint8Array>(new Uint8Array(level_1_1.coins.length))
+  const hitBlocksRef = useRef<Uint8Array>(new Uint8Array(QUESTION_BLOCKS.length))
+  const blockAnimationsRef = useRef<BlockAnimation[]>(makeBlockAnimPool())
+  const coinAnimationsRef = useRef<CoinAnimation[]>(makeCoinAnimPool())
 
   // React state — only what the HUD overlay / text bubble needs to re-render.
   const [score, setScore] = useState(0)
@@ -366,7 +389,8 @@ export default function SimpleMarioGame() {
       let onPlatform = false
       const wasAirborne = !player.onGround && player.velY > 0
 
-      platforms.forEach(platform => {
+      for (let i = 0, len = platforms.length; i < len; i++) {
+        const platform = platforms[i]
         if (player.x + player.width > platform.x &&
             player.x < platform.x + platform.width &&
             player.y + player.height <= platform.y + 10 &&
@@ -382,7 +406,7 @@ export default function SimpleMarioGame() {
           player.onGround = true
           onPlatform = true
         }
-      })
+      }
 
       if (player.y + player.height >= WORLD.GROUND_HEIGHT) {
         player.y = WORLD.GROUND_HEIGHT - player.height
@@ -401,17 +425,19 @@ export default function SimpleMarioGame() {
       const coins = level_1_1.coins
       const collected = collectedCoinsRef.current
       let coinsCollectedThisFrame = 0
-      coins.forEach((coin, index) => {
-        if (!collected.has(index) &&
-            player.x + player.width > coin.x &&
-            player.x < coin.x + 16 &&
-            player.y + player.height > coin.y &&
-            player.y < coin.y + 16) {
-          collected.add(index)
-          coinsCollectedThisFrame++
-          playSound('coin')
+      for (let index = 0, len = coins.length; index < len; index++) {
+        if (collected[index] === 0) {
+          const coin = coins[index]
+          if (player.x + player.width > coin.x &&
+              player.x < coin.x + 16 &&
+              player.y + player.height > coin.y &&
+              player.y < coin.y + 16) {
+            collected[index] = 1
+            coinsCollectedThisFrame++
+            playSound('coin')
+          }
         }
-      })
+      }
       if (coinsCollectedThisFrame > 0) {
         const delta = coinsCollectedThisFrame
         setScore(prev => prev + 100 * delta)
@@ -420,14 +446,17 @@ export default function SimpleMarioGame() {
 
       // --- question-block collisions ---
       const hits = hitBlocksRef.current
-      QUESTION_BLOCKS.forEach((block, index) => {
-        if (!hits.has(index) &&
-            player.x + player.width > block.x &&
+      const blockAnims = blockAnimationsRef.current
+      const coinAnims = coinAnimationsRef.current
+      for (let index = 0, len = QUESTION_BLOCKS.length; index < len; index++) {
+        if (hits[index] === 1) continue
+        const block = QUESTION_BLOCKS[index]
+        if (player.x + player.width > block.x &&
             player.x < block.x + 32 &&
             player.y < block.y + 32 &&
             player.y + player.height > block.y &&
             player.velY < 0) {
-          hits.add(index)
+          hits[index] = 1
           setScore(prev => prev + 200)
           setBubbleText({ title: block.title, description: block.description })
           setDisplayedText({ title: '', description: '' })
@@ -436,25 +465,37 @@ export default function SimpleMarioGame() {
           setShowTextBubble(true)
           playSound('block-hit')
 
-          blockAnimationsRef.current.push({
-            id: index,
-            y: block.y,
-            originalY: block.y,
-            animTime: 0
-          })
-          coinAnimationsRef.current.push({
-            x: block.x + 8,
-            y: block.y - 16,
-            velY: -8,
-            lifetime: 60
-          })
+          // Spawn block animation in first inactive pool slot.
+          for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+            if (!blockAnims[s].active) {
+              const slot = blockAnims[s]
+              slot.active = true
+              slot.id = index
+              slot.y = block.y
+              slot.originalY = block.y
+              slot.animTime = 0
+              break
+            }
+          }
+          // Spawn coin "puff" animation in first inactive pool slot.
+          for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+            if (!coinAnims[s].active) {
+              const slot = coinAnims[s]
+              slot.active = true
+              slot.x = block.x + 8
+              slot.y = block.y - 16
+              slot.velY = -8
+              slot.lifetime = 60
+              break
+            }
+          }
         }
-      })
+      }
 
-      // --- block animations (in place, drop from tail) ---
-      const blockAnims = blockAnimationsRef.current
-      for (let i = blockAnims.length - 1; i >= 0; i--) {
+      // --- block animations (walk pool, mutate active slots in place) ---
+      for (let i = 0; i < ANIM_POOL_SIZE; i++) {
         const anim = blockAnims[i]
+        if (!anim.active) continue
         anim.animTime += 16
         if (anim.animTime < 100) {
           anim.y = anim.originalY - 8 * (1 - anim.animTime / 100)
@@ -463,19 +504,19 @@ export default function SimpleMarioGame() {
           anim.y = anim.originalY - 8 * (1 - t)
         } else {
           anim.y = anim.originalY
-          blockAnims.splice(i, 1)
+          anim.active = false
         }
       }
 
-      // --- coin animations (in place, drop from tail) ---
-      const coinAnims = coinAnimationsRef.current
-      for (let i = coinAnims.length - 1; i >= 0; i--) {
+      // --- coin animations (walk pool, mutate active slots in place) ---
+      for (let i = 0; i < ANIM_POOL_SIZE; i++) {
         const c = coinAnims[i]
+        if (!c.active) continue
         c.velY += 0.5
         c.y += c.velY
         c.lifetime -= 1
         if (c.lifetime <= 0) {
-          coinAnims.splice(i, 1)
+          c.active = false
         }
       }
 
@@ -499,21 +540,23 @@ export default function SimpleMarioGame() {
       }
 
       // --- bushes ---
-      BUSH_DECORATIONS.forEach(bush => {
+      for (let i = 0, len = BUSH_DECORATIONS.length; i < len; i++) {
+        const bush = BUSH_DECORATIONS[i]
         const bushX = bush.x - camera.x
         if (bushX > -60 && bushX < WORLD.SCREEN_WIDTH) {
           drawBush(ctx, bushX, bush.y - camera.y)
         }
-      })
+      }
 
       // --- pipes ---
       const pipes = level_1_1.pipes
-      pipes.forEach(pipe => {
+      for (let i = 0, len = pipes.length; i < len; i++) {
+        const pipe = pipes[i]
         const pipeX = pipe.x - camera.x
         if (pipeX > -40 && pipeX < WORLD.SCREEN_WIDTH) {
           drawPipe(ctx, pipeX, pipe.y - camera.y)
         }
-      })
+      }
 
       // --- ground ---
       const groundY = WORLD.GROUND_HEIGHT - camera.y
@@ -671,7 +714,8 @@ export default function SimpleMarioGame() {
 
     // Brick platforms
     ctx.fillStyle = '#8B4513'
-    platforms.forEach(platform => {
+    for (let p = 0, plen = platforms.length; p < plen; p++) {
+      const platform = platforms[p]
       const screenX = platform.x - camera.x
       const screenY = platform.y - camera.y
       if (screenX > -platform.width && screenX < WORLD.SCREEN_WIDTH) {
@@ -680,42 +724,52 @@ export default function SimpleMarioGame() {
           drawBlock(ctx, screenX + i * 32, screenY, 'brick')
         }
       }
-    })
+    }
 
     // All blocks
-    level_1_1.blocks.forEach(block => {
+    const allBlocks = level_1_1.blocks
+    for (let b = 0, blen = allBlocks.length; b < blen; b++) {
+      const block = allBlocks[b]
       const screenX = block.x - camera.x
       const screenY = block.y - camera.y
+      if (screenX <= -32 || screenX >= WORLD.SCREEN_WIDTH) continue
 
-      if (screenX > -32 && screenX < WORLD.SCREEN_WIDTH) {
-        if (block.type === 'question') {
-          const questionIndex = QUESTION_INDEX_BY_XY.get(`${block.x},${block.y}`) ?? -1
-          const animation = blockAnims.find(a => a.id === questionIndex)
-          const animatedY = animation ? animation.y : block.y
-          const animatedScreenY = animatedY - camera.y
-
-          if (hits.has(questionIndex)) {
-            ctx.fillStyle = '#8B4513'
-            ctx.fillRect(screenX, animatedScreenY, 32, 32)
-            ctx.fillStyle = '#654321'
-            ctx.fillRect(screenX + 2, animatedScreenY + 2, 28, 28)
-            ctx.strokeStyle = '#4A2C17'
-            ctx.lineWidth = 2
-            ctx.strokeRect(screenX + 4, animatedScreenY + 4, 24, 24)
-          } else {
-            drawBlock(ctx, screenX, animatedScreenY, 'question')
+      if (block.type === 'question') {
+        const questionIndex = QUESTION_INDEX_BY_XY.get(`${block.x},${block.y}`) ?? -1
+        // Find this block's anim slot in the pool, if any.
+        let animY = block.y
+        for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+          const a = blockAnims[s]
+          if (a.active && a.id === questionIndex) {
+            animY = a.y
+            break
           }
-        } else {
-          drawBlock(ctx, screenX, screenY, 'brick')
         }
-      }
-    })
+        const animatedScreenY = animY - camera.y
 
-    // Coin animations (spawned by question-block hits)
-    coinAnims.forEach(coin => {
+        if (questionIndex >= 0 && hits[questionIndex] === 1) {
+          ctx.fillStyle = '#8B4513'
+          ctx.fillRect(screenX, animatedScreenY, 32, 32)
+          ctx.fillStyle = '#654321'
+          ctx.fillRect(screenX + 2, animatedScreenY + 2, 28, 28)
+          ctx.strokeStyle = '#4A2C17'
+          ctx.lineWidth = 2
+          ctx.strokeRect(screenX + 4, animatedScreenY + 4, 24, 24)
+        } else {
+          drawBlock(ctx, screenX, animatedScreenY, 'question')
+        }
+      } else {
+        drawBlock(ctx, screenX, screenY, 'brick')
+      }
+    }
+
+    // Coin "puff" animations from question-block hits (walk pool)
+    for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+      const coin = coinAnims[s]
+      if (!coin.active) continue
       const screenX = coin.x - camera.x
       const screenY = coin.y - camera.y
-      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && coin.lifetime > 0) {
+      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH) {
         ctx.fillStyle = '#FFD700'
         ctx.beginPath()
         ctx.arc(screenX + 8, screenY + 8, 8, 0, Math.PI * 2)
@@ -732,17 +786,19 @@ export default function SimpleMarioGame() {
           ctx.fillText('+200', screenX - 8, screenY - 4)
         }
       }
-    })
+    }
 
     // Static coins
     const coins = level_1_1.coins
-    coins.forEach((coin, index) => {
+    for (let i = 0, len = coins.length; i < len; i++) {
+      if (collected[i] === 1) continue
+      const coin = coins[i]
       const screenX = coin.x - camera.x
       const screenY = coin.y - camera.y
-      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && !collected.has(index)) {
+      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH) {
         drawCoin(ctx, screenX, screenY)
       }
-    })
+    }
   }
 
   const drawPlayer = (ctx: CanvasRenderingContext2D, player: Player, camera: { x: number; y: number }) => {
