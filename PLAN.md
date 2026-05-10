@@ -1,7 +1,7 @@
 ---
 worktree: mario-assets
 branch: opt/assets
-status: awaiting approval
+status: complete
 ---
 
 # PLAN — `opt/assets`
@@ -207,7 +207,7 @@ BRIEF goal #7 ("CSS dead-code removal") and to document the audit.
 **Risk:** Very low. Each removal is grep-verified.
 
 ### 8. `next.config.js` — `images` block (no-op, document)
-**Status:** pending
+**Status:** done — confirmed `images: { unoptimized: true }` is correct for `output: 'export'`. No change made; documented in REPORT.md so the bundle agent sees the deliberate non-edit. Folded into the REPORT commit (no separate commit for a no-op).
 **Files:** `next.config.js` (read-only).
 **Change:** The current config already has
 `images: { unoptimized: true }`, which is correct for `output:
@@ -218,7 +218,7 @@ bundle agent can see I deliberately did not edit the file.
 **Risk:** None.
 
 ### 9. Smoke test + REPORT.md
-**Status:** pending
+**Status:** done — `scripts/check-audio.sh` lists each event with its size and exits non-zero on missing/empty files. REPORT.md captures before/after numbers, build verification (both `npx next build` and `GITHUB_PAGES=true npx next build` succeed), and the cross-cutting handoffs to `opt/perf` and `opt/portfolio`.
 **Files:** new `scripts/check-audio.sh`, new `REPORT.md`.
 **Change:** Per the BRIEF, no test runner — ship a one-off shell
 script that lists each sound file with its size and exits non-zero
@@ -334,13 +334,13 @@ requires.
 - [x] Read BRIEF, PLAN, DECISION, all owned files
 - [x] Audited dead CSS via grep
 - [x] Drafted PLAN.md with 5–10 items, impact, risk
-- [ ] **Awaiting human approval before any code change**
-- [ ] Item 1 — Press Start 2P self-hosted
-- [ ] Item 2 — lazy AudioContext
-- [ ] Item 3 — decode-on-demand sounds
-- [ ] Item 4 — re-encode mp3s (blocked on ffmpeg yes/no)
-- [ ] Item 5 — delete sprites.css
-- [ ] Item 6 — delete game.css (or prune)
-- [ ] Item 7 — audit content.css
-- [ ] Item 8 — next.config.js images block (no-op, documented)
-- [ ] Item 9 — REPORT.md + smoke test
+- [x] Human approval received
+- [x] Item 1 — Press Start 2P self-hosted
+- [x] Item 2 — lazy AudioContext
+- [x] Item 3 — decode-on-demand sounds
+- [x] Item 4 — re-encode audio (afconvert; mixed wav/m4a)
+- [x] Item 5 — delete sprites.css
+- [x] Item 6 — delete game.css
+- [x] Item 7 — audit content.css (`-3` lines)
+- [x] Item 8 — next.config.js images block (no-op, documented)
+- [x] Item 9 — REPORT.md + smoke test
