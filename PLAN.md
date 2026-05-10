@@ -407,7 +407,7 @@ single canonical script.
 - [x] Item 3 — code-split game-mode — done; page chunk 81→49 KB raw / 18.4→12.6 KB gz; new game chunk 35 KB raw / 6.8 KB gz, loaded only on game entry. Content-mode first-load gz now ~182 KB (well under 200 KB target).
 - [x] Item 4 — re-enable type/lint — done; 26 errors surface, ALL in files perf will delete (see findings above). Build red on opt/bundle until perf merges; then green.
 - [x] Item 5 — eslint tighten — done; only added `react/no-unescaped-entities: off` (light touch; portfolio's copy edits would otherwise trip it)
-- [ ] Item 6 — package.json scripts
+- [x] Item 6 — scripts + dev-deps + analyzer wiring — done; added typecheck/build:gh/analyze/test scripts; tsx + @next/bundle-analyzer dev-deps installed (both pre-approved); next.config.js wraps in withBundleAnalyzer gated on ANALYZE=true
 - [ ] Item 7 — deploy artifact smoke check
 - [ ] Item 8 — bundle analyzer (pending decision)
 - [ ] Item 9 — Lighthouse measurement (pending sibling merges)
