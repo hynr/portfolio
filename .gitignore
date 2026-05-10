@@ -32,3 +32,10 @@ coverage/
 
 # claude code (local agent state)
 .claude/
+
+# nested git worktrees for parallel-agent optimization round
+/mario-perf/
+/mario-assets/
+/mario-gameplay/
+/mario-portfolio/
+/mario-bundle/
