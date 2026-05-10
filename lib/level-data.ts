@@ -1,3 +1,19 @@
+// Player physics tunables. Co-located with level data so the level designer
+// can tweak feel without touching the game module. Values mirror the inline
+// constants previously in SimpleMarioGame.tsx; preserve exact numerics until
+// the perf refactor lands and the behavior can be re-felt on hardware.
+export const PHYSICS = {
+  GRAVITY: 1.0,
+  GRAVITY_REDUCED: 0.5,
+  JUMP_VELOCITY: -18,
+  MOVE_SPEED: 6,
+  MAX_FALL_SPEED: 15,
+  FRICTION: 0.88,
+  ACCELERATION: 0.8,
+  COYOTE_TIME: 80,
+  MAX_JUMP_HOLD: 250,
+} as const
+
 export interface Position {
   x: number
   y: number

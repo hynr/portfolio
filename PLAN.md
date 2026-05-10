@@ -1,334 +1,208 @@
-# `opt/perf` — PLAN
+# PLAN — `opt/gameplay`
 
-Worktree: `mario-perf` (branch `opt/perf`).
-Owner: perf agent. Status board for siblings — read freely, do not edit.
+Status legend: `pending` → `in-progress` → `done`. Items ordered by leverage. Each carries an estimated impact and risk. **No code lands until human approval.** After approval, one commit per item per the brief, message format `opt(gameplay): <change> — <impact>`.
 
-Workflow per `BRIEF.md`: **stopped, awaiting human approval** before code edits.
-After approval, one commit per item, message format
-`opt(perf): <change> — <impact>`.
+Two items (#5 HUD edit, #4 reduced-motion in the loop) require touching `app/game-mode/SimpleMarioGame.tsx`, which is `opt/perf`'s file. I do **not** edit it. I describe the change here and post it to perf's `PLAN.md` review thread (see *Cross-cutting note for opt/perf* at the bottom). Perf applies during their `useRef` refactor.
 
-## Verified findings (before planning)
+---
 
-- `app/game-mode/SimpleMarioGame.tsx:576` — rAF effect dep array lists 8
-  pieces of `useState`, so every state set tears down + rebinds rAF.
-- `SimpleMarioGame.tsx:775-927` — `drawPlayer` issues ~250–300
-  `fillStyle = …; fillRect(…)` pairs per frame across 4 sprite states,
-  inside a per-frame `ctx.save()/restore()` with translate+scale.
-- `SimpleMarioGame.tsx:406-414` — `level_1_1.blocks.filter().map()` +
-  `level_1_1.projects.find()` re-runs every frame against static data.
-- `SimpleMarioGame.tsx:711` — same pattern again inside `drawPlatforms`
-  (filter+findIndex per question block per frame).
-- Hot-path allocation: `{ ...newPlayer }` per frame, `new Set([...prev,
-  index])` for `hitBlocks`, and `setBlockAnimations(prev => prev.map())`
-  + `setCoinAnimations(prev => prev.map())` clone arrays every frame even
-  when empty.
-- Canvas: 1024×576 logical, CSS-stretched to 100vw/100vh; no DPR scaling,
-  so pixel art is downsampled on retina.
-- Dead-code reference scan: every file in the BRIEF's delete list is
-  reachable only from other files in the delete list (or
-  `components/sprites/index.ts` re-exports). The live `PipeSprite` used
-  by content-mode is a *separate* file at `components/plain/PipeSprite.tsx`,
-  not the dead `components/sprites/PipeSprite.tsx`. Deletions are safe.
-- Three directories will be empty after deletion and should also be
-  removed: `components/audio/`, `components/game/`, `components/sprites/`.
-- Sibling `PLAN.md` files do not yet exist — no cross-cutting blockers.
+## Context snapshot (verified by reading)
 
-## Items (highest-leverage first)
+- Active keyboard read: `SimpleMarioGame.tsx:97-130, 241-275`. Used codes: `ArrowLeft`, `ArrowRight`, `KeyA`, `KeyD`, `Space`, `ArrowUp`, `KeyW`. Space is overloaded — both jumps *and* advances/closes the text bubble.
+- Active hardcoded HUD lie: `SimpleMarioGame.tsx:985-988` (`<div>TIME</div><div>400</div>`).
+- PHYSICS constants inline at `SimpleMarioGame.tsx:7-17` (8 numbers — must move to `lib/level-data.ts`).
+- Resume pipe: **does not exist** in `lib/level-data.ts`. Only `github` (x=800) and `linkedin` (x=1600). The `case 'resume'` in `SimpleMarioGame.tsx:199-201` is dead code — never reached today. Brief goal #7 is moot for the current level; flagging anyway so we don't accidentally re-add the pipe before a PDF lands. See cross-cutting note for opt/portfolio.
+- Reduced-motion pieces in-game: squash (`SimpleMarioGame.tsx:228-237, 352-355, 369-373`), coin spin sine (`SimpleMarioGame.tsx:627-629`), camera lerp (`SimpleMarioGame.tsx:486`). **Cloud drift does NOT exist** — clouds are static in world space at `SimpleMarioGame.tsx:501-508`, only camera scroll moves them. Brief is mildly off on this; nothing to disable for clouds.
+- Reduced-motion entry block in `app/page.tsx:37-46` already alerts and refuses content→game when reduced-motion is set, *and* live-toggles game→content if the OS pref flips mid-session. So the only remaining gap is what happens *inside* a running game, which addresses goal #2.
+- Audio mute: `lib/audio.ts:32-39` mutes only at `AudioSingleton` construction time; does not respond to live toggle. Out of scope for me — note for assets agent if they want it.
+- Dead `TouchControls.tsx` writes to `InputHandler.setTouchState(...)`. I throw it away after perf deletes it; new TouchControls writes to the new input layer.
+- Mobile detection: brief flags `MarioGame.tsx:485` (`window.innerWidth > 768`) as the wrong pattern. I will use `window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window` instead, evaluated once on mount, with a media-query listener for live changes (e.g. plugging in a keyboard).
 
-Each item is one commit. Numbers are pre-implementation estimates;
-`REPORT.md` will replace them with measured values.
+---
 
-### 1. Hoist mutable game state to `useRef`; bind rAF once per session
+## Items
 
-**Change.** Move `player`, `camera`, `hitBlocks`, `blockAnimations`,
-`coinAnimations`, `lastFrameTime` into `useRef`. The rAF `useEffect`
-gets a `[]` dep array so it mounts once. React state stays only for
-what the HUD overlay and text bubble need to re-render: `score`,
-`collectedCoins.size` (store as a number, not a Set in state), and
-`showTextBubble` / `bubbleText` / `displayedText` /
-`textAnimationIndex` / `textFullyDisplayed`. The loop reads/writes
-refs, and calls `setScore` / `setCollectedCoinCount` only when those
-values actually change.
+### 1. Create `lib/game-engine/input.ts` — unified input layer (`done`)
+> outcome: file written; `getInput()` / `setTouch()` / `initInput()` exported. Includes a `_resetForTest()` hook and a deprecated `InputHandler` class shim so the dead `MarioGame.tsx` keeps building until perf deletes it.
+**Impact:** unblocks every other gameplay item; prerequisite for touch and the future `getInput()` seam in the rAF loop. **Risk:** low — surface is tiny.
 
-**Impact.** Goal #1 directly. rAF effect rebinds 0 times after mount
-instead of ~60×/sec. Removes the largest source of jank and the entire
-class of "stale closure" bugs the dep-array was masking. Estimated
-sustained FPS jump from ~30–45 to a stable 60 on M1 before any draw-cost
-work lands.
+Surface (target ~70 lines):
 
-**Risk.** Medium. Touches every `setState(prev => …)` in the file.
-Have to be careful that the HUD overlay still updates — `score` and
-the coin count must remain React state, not refs. The `keysRef`
-pattern already shows the right shape. Spacebar text-bubble close
-flow stays in React state. Camera and animations are pure-render
-state and move to refs cleanly.
+```ts
+export interface InputSnapshot {
+  left: boolean
+  right: boolean
+  jump: boolean      // held
+  interact: boolean  // held — used by touch only; keyboard bubble-advance keeps its own listener
+}
 
-### 2. Build an offscreen-canvas sprite atlas once at mount; blit player with `drawImage`
+export type TouchButton = 'left' | 'right' | 'jump' | 'interact'
 
-**Change.** On mount, render each of the 8 player frames (4 states ×
-2 facings) into one `OffscreenCanvas` (or fallback `<canvas>` for older
-Safari) at native pixel size, using the existing `drawPixel` palette.
-Replace the per-frame body of `drawPlayer` with one
-`ctx.drawImage(atlas, sx, sy, sw, sh, dx, dy, sw, sh)`. The squash
-effect stays as `ctx.scale(1, scaleY)` around that single blit. Facing
-flip stays as `ctx.scale(-1, 1)` around the blit. Add a tiny
-`spriteAtlas.test.ts` (per BRIEF constraint) that asserts
-`atlas.width === expectedW`, `atlas.height === expectedH`, and that at
-least one non-transparent pixel exists per frame's bounding box.
+// Idempotent: safe to call twice. Returns a cleanup that removes listeners
+// and resets touch state. Caller (SimpleMarioGame mount effect) owns lifetime.
+export function initInput(): () => void
 
-**Impact.** Goal #3. Player draw drops from ~2–4 ms/frame (250+
-state-set + fillRect pairs) to a single `drawImage` call, ~0.05–0.15
-ms/frame on M1. Frees ~2 ms of frame budget — the difference between
-"60fps with stutter" and "60fps clean" once the rAF binding is fixed.
+// Cheap: called every frame from the rAF loop. Returns a fresh object
+// (immutable snapshot) so React refs / equality checks work predictably.
+export function getInput(): InputSnapshot
 
-**Risk.** Low. Atlas builder is pure and deterministic from the
-existing pixel data (extract the pixel arrays from the four `if`
-branches into typed-pixel-record arrays first; both the atlas builder
-and a future replacement renderer can share them). `OffscreenCanvas`
-needs a `<canvas>` fallback for Safari < 16.4 — `if (typeof
-OffscreenCanvas !== 'undefined')` guard. The smoke test runs without
-a test runner; gate it with `if (process.env.NODE_ENV !== 'production')`
-per BRIEF instructions.
-
-### 3. Hoist all per-frame static lookups out of the loop
-
-**Change.** Compute once at mount and stash in module-scope or a ref:
-- The decorated question-block list with title/description joined
-  (currently `SimpleMarioGame.tsx:406-414`).
-- The bush list (`level_1_1.decorations.filter(d => d.type === 'bush')`,
-  `:511`).
-- The brick-platform list (`level_1_1.platforms`, `:687`).
-- The question-block index lookup inside `drawPlatforms`
-  (`:711`, the `filter+findIndex` is O(n²) per frame).
-- The sky gradient (`createLinearGradient`, `:495-498`) — built once,
-  reused.
-
-**Impact.** Goal #7. Drops three full array iterations and two object
-allocations from each frame. Visible mostly as steadier frame pacing
-on lower-end hardware (Raspberry Pi-tier) and a small heap-allocation
-reduction.
-
-**Risk.** Very low. These are pure data transforms over static input.
-
-### 4. Eliminate per-frame heap allocations on the hot path
-
-**Change.** Building on items 1 and 3:
-- Mutate the player object in place inside the loop (no `{...prev}`).
-- `hitBlocks` becomes a `Uint8Array(questionBlocks.length)` ref; set
-  `arr[i] = 1` instead of `new Set([...prev, i])`.
-- `blockAnimations` and `coinAnimations` become fixed-capacity pools
-  (`{ active: false, … }[]` with a small max — 8 each is plenty given
-  the level has ~4 question blocks). Reuse slots; no `prev.map()`,
-  no `prev.filter()`, no `[...prev, x]`.
-- `collectedCoins` similarly becomes a `Uint8Array`; the HUD state
-  `collectedCoinCount: number` is bumped only on transition.
-- The sky gradient and any `createLinearGradient` call moves out
-  (covered by item 3).
-
-**Impact.** Goal #4. Per-frame steady-state allocations drop from
-roughly 5–8 KB/frame (~300–500 KB/sec at 60fps) to <1 KB/frame
-(<60 KB/sec) — well under the 200 KB/sec target. Removes the GC
-pauses that show up as 100–200 ms hitches every 5–10 seconds.
-
-**Risk.** Medium. This is the most invasive item — it's the
-"everything that touches game state" item. Can land safely after
-item 1 (refs mean no React fight) and item 3 (lookups precomputed).
-Will keep the existing collision-detection logic and physics math
-byte-for-byte to avoid any feel change.
-
-### 5. DPR-aware canvas with preserved pixel-art upscale
-
-**Change.** On mount: read `window.devicePixelRatio`, set
-`canvas.width = SCREEN_WIDTH * dpr; canvas.height = SCREEN_HEIGHT * dpr`,
-call `ctx.scale(dpr, dpr)` once. Keep the CSS `width: 100vw; height:
-100vh; image-rendering: pixelated`. Also set
-`ctx.imageSmoothingEnabled = false` for the sprite atlas blit so
-nearest-neighbor wins on the upscale. Re-run on `window.resize` only
-if DPR actually changed (very rare; cheap to gate).
-
-**Impact.** Goal #6. Sprites stop looking soft on retina. No FPS cost
-(we draw the same logical pixels), small VRAM cost (4× pixels). Big
-visual win.
-
-**Risk.** Low. The `ctx.scale(dpr, dpr)` approach is standard and
-won't interact with the existing translate/scale calls in
-`drawPlayer` because those happen *after* the DPR scale. One thing
-to verify: the click-to-pipe coordinate math at `:167-176` uses
-`canvas.width / rect.width`, which already accounts for backing-store
-size, so it stays correct.
-
-### 6. Delete ~2,247 lines of dead code (one commit)
-
-**Change.** Remove (verified by grep — only intra-set references):
-
-- `app/game-mode/MarioGame.tsx` (495)
-- `app/game-mode/TouchControls.tsx` (156) — gameplay agent will write
-  a fresh one against the new input layer.
-- `lib/game-engine/game-loop.ts` (73)
-- `lib/game-engine/input.ts` (60)
-- `lib/game-engine/physics.ts` (88)
-- `lib/game-engine/collision.ts` (161)
-- `components/sprites/{Block,Bush,Cloud,Coin,Ground,Pipe,Player}*.tsx`
-  + `index.ts` (1,522)
-- `components/game/InteractivePipeSprite.tsx` (79)
-- `components/audio/AudioManager.tsx` + `MuteToggle.tsx` (104)
-
-Plus the now-empty directories `lib/game-engine/`, `components/audio/`,
-`components/game/`, `components/sprites/`.
-
-The live `PipeSprite` used by `components/plain/PipeWarp.tsx` is
-`components/plain/PipeSprite.tsx`, a separate file owned by the
-portfolio agent — untouched.
-
-**Impact.** ~2,247 lines removed. Bundle agent will measure the
-gzipped delta; static-export `out/` is expected to shrink ≥30%
-(per the lead's `PLAN.md` § bundle goal 5). Removes the entire
-"first-iteration" surface that future agents could accidentally
-import.
-
-**Risk.** Low — references already verified. The TypeScript build
-will surface any miss; bundle agent has `ignoreBuildErrors: true`
-disabled later, so this is the right window to do it.
-
-### 7. Smoke test for the sprite-atlas builder
-
-**Change.** A `app/game-mode/spriteAtlas.test.ts` next to the atlas
-builder. Asserts (a) the atlas canvas dimensions match the expected
-`frameW * cols × frameH * rows`, (b) the per-frame ImageData has at
-least one non-transparent pixel inside the body bounding box, (c)
-the frame index map (state → {sx, sy}) covers all 8 entries.
-
-Per BRIEF: no test runner installed. Wrap in
-`if (process.env.NODE_ENV !== 'production')` and call from a dev-only
-import path, so it runs once at dev mount and short-circuits in the
-production export. Coordinate with the bundle agent in their PLAN.md
-once they pick a test framework, at which point this becomes a real
-unit test.
-
-**Impact.** Catches atlas regressions during the gameplay agent's
-input refactor and the bundle agent's tree-shaking pass.
-
-**Risk.** None.
-
-## Items I considered and rejected (for now)
-
-- **Fixed-timestep accumulator (`performance.now()` delta-time loop).**
-  Would stabilize physics on 120Hz displays where the current
-  `Approx frame time = 16ms` constants drift. But the gameplay agent
-  owns physics tunables (per `PLAN.md` § 3 goal 4), and shifting the
-  integration model under them mid-round invites a feel regression.
-  Worth raising as a cross-cutting note, not unilaterally implementing.
-  See § Cross-cutting note for opt/gameplay below.
-
-- **Switch to `requestAnimationFrame(time => …)` to use the timestamp
-  argument instead of `Date.now()`.** Same concern. Tracking only.
-
-## Order of operations
-
-```
-1 → 3 → 4 → 2 → 5 → 6 → 7
+// TouchControls calls this on pointerdown/pointerup. Multiple keys can be
+// down concurrently (left + jump) — each tracked independently.
+export function setTouch(button: TouchButton, pressed: boolean): void
 ```
 
-Item 1 first because everything else relies on stable refs.
-Item 3 next because item 4 needs the precomputed lookups.
-Item 4 lands the alloc-elimination on the now-stable refs.
-Item 2 (atlas) is independent of 1/3/4 but lands cleaner once
-the loop is settled.
-Item 5 (DPR) is a single small commit, low blast radius.
-Item 6 (deletes) lands once the atlas has fully replaced the
-inline draw functions and nothing in `app/`, `components/`, `lib/`
-references the dead modules.
-Item 7 (test) ships alongside item 2.
+Keyboard mappings (preserves the active subset, *plus* adds `KeyE` and `Enter` so a future a11y interact path is keyboard-reachable without overloading Space; today the bubble-advance keydown handler keeps Space as it does now):
+- `left` ← `ArrowLeft`, `KeyA`
+- `right` ← `ArrowRight`, `KeyD`
+- `jump` ← `Space`, `ArrowUp`, `KeyW`
+- `interact` ← `KeyE`, `Enter` (keyboard) + touch interact button
 
-## Measurement plan (for `REPORT.md`)
+Implementation notes:
+- Module-level `Set<string>` for keys; module-level `Record<TouchButton, boolean>` for touch.
+- Keyboard listeners attach in `initInput()` and detach in the returned cleanup. SSR-safe: guard with `typeof window !== 'undefined'`.
+- `e.preventDefault()` on Space and the arrow keys to suppress page scroll while game-mode is mounted (matches today's line 101 behavior, just centralized).
 
-For each before/after comparison:
-- Chrome DevTools Performance trace, 30s walkthrough of level 1-1
-  (right to first pipe, jump on first question block, return).
-  Capture FPS curve summary (min / median / 95th percentile).
-- DevTools Memory tab "Allocation instrumentation on timeline",
-  steady-state walking sample, KB/sec.
-- DevTools Performance "User timing" markers around `drawPlayer`
-  start/end, averaged over 60 frames.
-- `du -sh out` after `GITHUB_PAGES=true npm run build`, before vs after.
-- `wc -l` on the deleted files (already captured above).
+### 2. Rewrite `app/game-mode/TouchControls.tsx` against the new input layer (`done — pending perf-side mount`)
+> outcome: component rewritten; renders only when `(pointer: coarse)` matches or `'ontouchstart' in window`. 64×64 pointer-event buttons with `setPointerCapture`. Mount point in `SimpleMarioGame.tsx` is perf-side per cross-cutting note.
+**Impact:** mobile players can move. Today they cannot. **Risk:** medium — must not block canvas pointer events for pipes; must render only when appropriate.
 
-Targets per BRIEF:
-- Goal 1: rAF effect mounts once (assert in dev with a `console.count`
-  in the effect; remove before commit).
-- Goal 2: 60fps sustained over 30s walk on M1 Safari + Chrome.
-- Goal 3: `drawPlayer` < 0.3 ms/frame on M1.
-- Goal 4: heap alloc < 200 KB/sec steady state.
-- Goal 5: initial canvas paint < 100 ms after mount.
-- Goal 6: canvas DPR-aware, sprites crisp on retina.
-- Goal 7: question-block detection precomputed.
+Design:
+- Render only when `(pointer: coarse)` matches OR `'ontouchstart' in window` (feature-based, per brief). Re-evaluated via media-query listener.
+- Layout: bottom-left D-pad (`←`, `→`), bottom-right action stack (`A` / interact, `B` / jump). Hit targets **64 × 64 CSS px** (above the 44px floor), `touch-action: none` on each button, `user-select: none`.
+- Pointer events (`pointerdown`, `pointerup`, `pointercancel`, `pointerleave`) so dev mouse + stylus + finger all work. Each handler calls `setTouch(button, true|false)`.
+- Wrapper `<div>` is `pointer-events: none`; only the buttons opt back in with `pointer-events: auto`. The canvas underneath stays clickable for pipes (which the buttons are *not* layered over — they live in the corners).
+- Interact button accepts an `onInteract: () => void` prop from `SimpleMarioGame`. Parent runs the same logic as today's Space-keydown bubble handler (skip-to-full → close). Keeps the bubble state machine in one place.
+- Tailwind is unavailable in this component path historically; I use inline styles + a small inline `<style>` block for `:active`/`:focus-visible` pseudostates. Flagged for assets agent to migrate later (per brief constraint).
+- Mounted as a sibling overlay inside `SimpleMarioGame.tsx`'s root `<div>`. The actual mount-point edit is described in the cross-cutting note for opt/perf.
 
-## Constraints honored
+### 3. Move `PHYSICS` constants from `SimpleMarioGame.tsx:7-17` into `lib/level-data.ts` (`done — pending perf-side import swap`)
+> outcome: `PHYSICS` exported from `lib/level-data.ts` with values **identical** to current. Import-side replacement in `SimpleMarioGame.tsx` is perf-side per cross-cutting note.
+**Impact:** tunables co-located with level data; satisfies brief goal #5; future tuning doesn't require touching the game module. **Risk:** zero (mechanical move).
 
-- No new dependencies.
-- Public surface untouched: mode toggle, pipe-click external links
-  (GitHub / LinkedIn / mailto / `/resume.pdf`), HUD numbers, reduced-
-  motion gating in `app/page.tsx`.
-- `next build` with `output: 'export'` continues to succeed.
-- Out-of-scope files untouched: `lib/audio.ts`, `app/layout.tsx`,
-  `components/plain/*`, `lib/portfolio-data.ts`, `lib/level-data.ts`,
-  `lib/navigation.ts`, `lib/mode-toggle.ts`, `next.config.js`,
-  `tsconfig.json`, `tailwind.config.js`, `package.json`, `styles/*`,
-  `public/sounds/*`, the six `portfolio-*/` snapshot dirs, the four
-  other `mario-*/` worktrees.
+- Export `PHYSICS` from `lib/level-data.ts` with **identical numeric values** (no tuning yet — that comes after perf's refactor lands so I can re-feel them on M1).
+- The actual import-swap edit in `SimpleMarioGame.tsx` is described in the cross-cutting note for opt/perf.
 
-## Status
+### 4. Reduced-motion handling inside game-mode (`done — pending perf-side gates`)
+> outcome: `lib/game-engine/use-reduced-motion.ts` shipped — live-updating boolean. Three gate-points (squash, coin spin, camera lerp) are perf-side per cross-cutting note. Cloud drift confirmed absent.
+**Impact:** a11y goal #2; matches existing entry-time behavior; covers the direct-URL and mid-session-toggle gaps. **Risk:** low.
 
-All 7 items landed in 7 commits between baseline `d5215ce0` and HEAD.
-See `REPORT.md` for the full before/after numbers, methodology for the
-in-browser traces I cannot capture from a CLI, and goal-by-goal verdict.
+- Reduced-motion is read by the same `prefers-reduced-motion` media query already used by `app/page.tsx`. I add a small hook in this worktree: `lib/game-engine/use-reduced-motion.ts` (or inline; I'll decide while implementing). Returns `boolean`, live.
+- When true, the game loop:
+  - Skips squash: `squashTime` stays 0, `scaleY` stays 1.
+  - Skips coin spin sine at `SimpleMarioGame.tsx:627-629`: `scale = 1` (just draw a static coin).
+  - Snaps camera at `SimpleMarioGame.tsx:486`: `newCamera.x = clampedTargetX` (no lerp).
+- Cloud drift: confirmed absent — no work needed.
+- Audio mute on reduced-motion: already handled at construction time in `lib/audio.ts:36-39`; out of my scope.
+- The actual edits to the game module are described in the cross-cutting note for opt/perf.
 
-| # | Item | Status | Outcome |
-|---|---|---|---|
-| 1 | Hoist state to `useRef` | done | rAF effect dep array now `[]`; player/camera/hitBlocks/blockAnims/coinAnims/collectedCoins on refs; HUD reads `collectedCoinCount`. Static-export build passes (106 kB first-load JS, baseline). |
-| 2 | Sprite atlas + `drawImage` | done | spriteAtlas.ts builds an OffscreenCanvas (with HTMLCanvasElement fallback) at mount; pixel data run-length encoded (~67 strips/frame × 4 frames). drawPlayer now does one drawImage. SimpleMarioGame.tsx 1112 → 998 lines (atlas data lives in 363 lines of mostly auto-generated runs). Page route 18.6 → 18.1 kB. |
-| 3 | Hoist static lookups | done | QUESTION_BLOCKS / QUESTION_INDEX_BY_XY / BUSH_DECORATIONS hoisted to module scope; sky gradient cached in useEffect. drawPlatforms O(n²) findIndex replaced with O(1) Map lookup. |
-| 4 | Eliminate hot-path allocs | done | hits/collected → Uint8Array; blockAnims/coinAnims → fixed pools (size 8); spawn/end mutate `active` flag instead of push/splice; hot-path forEach → for loops. |
-| 5 | DPR-aware canvas | done | canvas backing store sized to SCREEN_W × dpr; ctx.scale(dpr, dpr) once at mount; click handler converts CSS px → logical world units (DPR-independent); image-rendering: pixelated preserved on the live ctx via `imageSmoothingEnabled = false` (already set in item 2). |
-| 6 | Delete dead code | done | 17 files / 2,742 lines removed; 4 directories now gone (components/audio, components/game, components/sprites, lib/game-engine). Bundle size unchanged because Next was already tree-shaking these — the win is source-tree clarity for sibling agents. |
-| 7 | Sprite-atlas smoke test | done | spriteAtlas.test.ts asserts atlas dimensions, frame map, and ≥1 opaque pixel/frame. Dynamic-imported only when NODE_ENV !== 'production'; verified absent from out/ chunks after `npx next build`. |
+### 5. Honest TIME column (`described — pending perf-side JSX deletion`)
+> outcome: decision recorded as **option (b) — remove**. Single-block deletion at `SimpleMarioGame.tsx:985-988` is perf-side per cross-cutting note.
+**Impact:** removes a UI lie; satisfies brief goal #4. **Risk:** zero.
 
-## Cross-cutting note for opt/gameplay
+**Decision: option (b) — remove the column.**
 
-After item 1, `player` lives at `playerRef.current` inside
-`SimpleMarioGame.tsx` (no longer React state). When you wire the new
-`lib/game-engine/input.ts`, expect to read keyboard + touch into a
-single `inputStateRef` and have the game loop consume it the same
-way it currently consumes `keysRef`. I will leave a stable
-`inputStateRef` shape — same `Set<string>` semantics as today's
-`keysRef` — so your input layer can replace the listeners without
-the loop changing. If you'd prefer a different shape (e.g. a
-fixed-key boolean record for branch-prediction friendliness), say so
-here and I'll align before committing item 1.
+Rationale: option (a) (real countdown + game-over loop) needs another `setState` source plus a death/respawn state machine plus a play-test pass for whether 400 is the right number. None of that is on-theme for a 2-minute portfolio walkthrough — a recruiter reading the page does not want their Mario session ending under them. (b) is one JSX deletion at `SimpleMarioGame.tsx:985-988` and the lie is gone.
 
-Separately: the BRIEF asks for sustained 60fps; on 120Hz displays the
-current `Approx frame time = 16ms` constants for `squashTime`,
-`jumpHoldTime`, `MAX_JUMP_HOLD`, and coin-anim `lifetime` will run at
-half-speed once rAF actually delivers 120 ticks/sec (it doesn't today
-because the dep-array bug caps us). I am NOT changing the integration
-model — that's your domain — but flagging it so you can decide
-whether to switch to a `performance.now()`-based delta or rescale
-the constants once item 1 lands. Happy to coordinate.
+Edit described in the cross-cutting note for opt/perf.
+
+### 6. Plain Mode button focus + `Esc` shortcut + `aria-live` for the text bubble (`described — pending perf-side edits`)
+> outcome: all three changes live in `SimpleMarioGame.tsx` and are perf-side per cross-cutting note. CSS for the focus ring is included verbatim there.
+**Impact:** a11y goal #3. **Risk:** low.
+
+- Plain Mode button at `SimpleMarioGame.tsx:1008-1039` currently has only browser-default focus. Add `:focus-visible` outline (visible white-on-purple ring, `2px solid #fff`, `outline-offset: 2px`). Implemented via inline `<style>` block since the component uses inline styles, not Tailwind.
+- `Esc` keyboard shortcut: when game-mode is active, pressing `Esc` triggers the same flow as the Plain Mode button (`localStorage.setItem('displayMode', 'plain')`; `window.location.href = '/'`). I'll wire this through the input layer's keyboard listener — adds a `subscribe(key, fn)` micro-API or, simpler, a separate one-shot `useEffect` in the game module just for Esc. Probably the latter to keep the input layer minimal.
+- `aria-live="polite"` region for the text bubble title at `SimpleMarioGame.tsx:1061-1068`. Screen-readers announce project reveals. Description block stays as visual text only (the title is the screen-reader payload — description is long enough that announcing it would be noisy).
+- Tab order: today there is exactly one in-game button (Plain Mode), so Tab order is trivial. If items #1-#5 add the touch buttons, those should not be tab-focusable on desktop (visibility is `(pointer: coarse)`-gated). I'll set `tabIndex={-1}` on the touch buttons since they're touch-only.
+- Edits to the Plain Mode button styling and the `aria-live` attribute are described in the cross-cutting note for opt/perf.
+
+### 7. Reachability audit of level 1-1 (`done`)
+> outcome: walked all 17 coins / 4 question blocks / 2 pipes analytically. Every item is reachable from spawn; no level edits needed. Full per-item table in `REPORT.md`. Found `groundVariation` is dead data (declared in level but never consumed by `SimpleMarioGame`'s ground collision) — flagged for opt/perf, not in my scope to wire.
+**Impact:** satisfies brief goal #6; ensures every coin / question block is reachable. **Risk:** low — I edit `lib/level-data.ts` only, which I own.
+
+Quick analytical bound (to be verified by foot in-game after perf's refactor):
+- `JUMP_VELOCITY = -18`, `GRAVITY = 1.0`, `GRAVITY_REDUCED = 0.5`, `MAX_JUMP_HOLD = 250ms` (~15 frames at 60fps).
+- Naive max jump height with full hold: roughly 18²/(2·0.5) ≈ 324px upper bound (full reduced-gravity rise). Realistic ~180-220px given the hold cap and frame timing.
+- Player is 32×64. Ground at y=450 → player top at y=386 standing.
+- 4 question blocks: y=350 (one), y=250 (two), y=300 (one). All within naive jump reach from ground.
+- Coins span y=270–380. Coin clusters at x=900-1110 trace an arc up to y=270, which requires reaching player-top ≈ 254 from the ground — within reach but tight. The 900 platform at (x=900, y=250, w=128) gives a stepping stone, so the cluster is ridable from above as well.
+- Question block at x=2200 (y=300) needs the 1900 platform (y=280, w=160) or the 2100 brick (y=300) as a stepping stone. Currently both exist — passable.
+
+I will walk the level on paper, then in-engine, list every item with `(x, y, reachable: yes|no, from: <coordinates>)`, and:
+- Move any unreachable item, OR
+- Add a small platform / use `groundVariation` to bridge it, OR
+- Document in `lib/level-data.ts` why it's intentional (e.g., a high-difficulty bonus coin — none currently warranted).
+
+Output goes in `REPORT.md`, not in code comments.
+
+### 8. Smoke test for the input layer: `lib/game-engine/input.test.ts` (`done`)
+> outcome: 14 assertions covering keyboard (Arrow/WASD/Space/E/Enter), touch via `setTouch`, concurrent left+right, and blur-clears-all. Runs via `node --experimental-strip-types lib/game-engine/input.test.ts` — confirmed PASS on Node 26. Bundle-agent ask for a `package.json` script remains.
+**Impact:** catches regressions if perf or a future agent re-touches the input seam. **Risk:** low.
+
+- Synthetic `KeyboardEvent('keydown', { code: 'ArrowLeft' })` → assert `getInput().left === true`. Then `keyup` → assert `false`. Repeat for jump and interact.
+- Synthetic `setTouch('jump', true)` → assert `getInput().jump === true`. `setTouch('jump', false)` → assert `false`.
+- Brief notes "no runner is installed". Two paths:
+  1. Coordinate with bundle agent to add `tsx`/`vitest` (one-line `package.json` script). Marginal cost; preferred if bundle agent is open.
+  2. Fallback: a runtime `assert()` block inside `input.ts` that runs once in dev mode (`process.env.NODE_ENV === 'development'`) and `console.error`s on failure. Ugly but self-contained.
+
+I'll ask bundle agent in this PLAN's coordination section. If they say no, I take the fallback.
+
+### 9. Resume pipe coordination (`pending — awaiting opt/portfolio decision`)
+> outcome: cross-cutting note posted. Default to (b) — leave dead switch arm; no `level-data.ts` change. If portfolio agent later ships `public/resume.pdf`, I'll add a third pipe at integration time.
+**Impact:** stops a future 404; clarifies dead code. **Risk:** zero.
+
+- `lib/level-data.ts` has no resume pipe today. The `case 'resume'` switch arm at `SimpleMarioGame.tsx:199-201` is unreachable.
+- I will *not* remove the switch arm (perf's file). I will *not* add a resume pipe to `level-data.ts` until portfolio agent confirms a `public/resume.pdf` ships.
+- Cross-cutting ask logged below.
+
+---
+
+## Cross-cutting note for opt/perf
+
+You own `app/game-mode/SimpleMarioGame.tsx`. I need the following surface changes during your `useRef`-based refactor. None of these change physics or render logic — they are seams I plug into.
+
+1. **Replace the keyboard-driven movement reads at lines 241-275 with `getInput()`** from `@/lib/game-engine/input.ts` (file I create). Signature: `() => InputSnapshot` where `InputSnapshot = { left, right, jump, interact: boolean }`. The bubble-advance keydown handler at lines 97-117 should remain as a one-time `useEffect`-attached listener on `Space` only — that path is event-driven, not per-frame, and doesn't belong in the unified snapshot.
+
+2. **Mount lifecycle:** in your top mount effect (the one that survives state churn after your refactor), call `initInput()` and store the returned cleanup. Run cleanup on unmount.
+
+3. **Render `<TouchControls onInteract={...}/>` as a sibling of the canvas** inside the root `<div>` at `SimpleMarioGame.tsx:937` (or wherever it lands post-refactor). I will provide the component; you provide the mount point and the `onInteract` callback (it should run the same logic as the existing Space-bubble handler at lines 102-115).
+
+4. **Import `PHYSICS` from `@/lib/level-data`** instead of defining it inline at lines 7-17. Drop the inline block. I land the export in `lib/level-data.ts` — when both branches merge, the import resolves cleanly.
+
+5. **Reduced-motion gate:** read `prefers-reduced-motion` once on mount (or via the small hook I'll ship in `lib/game-engine/use-reduced-motion.ts` — your call whether to import it or inline a `matchMedia` read). Pass the boolean into the loop; gate three things on it:
+   - line 230: skip the squash decrement and the `scaleY` assignment
+   - line 486: replace `prevCamera.x + diff * 0.1` with `clampedTargetX`
+   - line 629 (inside `drawCoin` or wherever `Math.sin(time)` lives): use `scale = 1`
+
+6. **Remove the TIME HUD column** at `SimpleMarioGame.tsx:985-988`. Just delete the `<div>` flex column. The other two HUD columns (`HUZAIFA`/score, `WORLD 1-1`/coins) stay.
+
+7. **Plain Mode button styling** at lines 1008-1039: add `onFocus`/`onBlur` to mirror the `onMouseEnter`/`onMouseLeave` scale/shadow, plus a `:focus-visible` outline via an inline `<style>` block. The exact CSS is in my item #6 above; I'll send the patch as a comment on this note when you're ready.
+
+8. **`aria-live="polite"`** on the text bubble title `<div>` at `SimpleMarioGame.tsx:1061-1068`.
+
+9. **`Esc` keyboard shortcut**: add a one-shot `useEffect` that listens on `keydown` for `Escape` and runs the same body as the Plain Mode button's `onClick`.
+
+10. **Resume switch arm** at `SimpleMarioGame.tsx:199-201`: leave it alone for now. If portfolio agent ships `public/resume.pdf`, I'll add the pipe to `level-data.ts` and the existing arm Just Works. If they don't, the arm stays as harmless dead code until a future cleanup pass.
+
+If any of the above clashes with your refactor shape, post back here.
 
 ## Cross-cutting note for opt/portfolio
 
-I will not touch the `useState<'content' | 'game'>` / `setMode` block
-in `app/page.tsx` after this PLAN is approved unless you ask. If a
-`useGameProgress()` hook lands in `lib/mode-toggle.ts` and you wire
-it into `app/page.tsx`, I'll read it from inside `SimpleMarioGame`
-via the same hook (or via a write callback you expose) so coin/
-project state propagates without the game owning the persistence.
-Tell me here which interface you'd like before you ship.
+The resume pipe (`SimpleMarioGame.tsx:199-201`) currently 404s if it ever fires, but no level data routes to it today, so it's dormant. Two options — please pick:
+- (a) You ship `public/resume.pdf`, I add a third pipe to `lib/level-data.ts` (probably at x≈2300, linkTo: 'resume'). The case wires up.
+- (b) You don't ship the PDF; I leave `level-data.ts` alone. The dead switch arm stays — perf or bundle agent removes it later.
+
+Either is fine for me. Default to (b) unless you actively want a third pipe.
 
 ## Cross-cutting note for opt/bundle
 
-After item 6 lands, `lib/game-engine/`, `components/audio/`,
-`components/game/`, and `components/sprites/` are gone entirely. Your
-tree-shake pass should see a clean drop. The sprite atlas (item 2)
-ships as a pure module that's only imported by `SimpleMarioGame`,
-so it stays inside the `next/dynamic`-split game chunk you'll create.
+For item #8 (smoke test), I'd like a tiny test runner. Cheapest is `tsx` (already-on-path TS executor) plus a `package.json` script `"test:input": "tsx lib/game-engine/input.test.ts"`. No `vitest`/`jest`. Acceptable? If not, I fall back to a dev-only runtime assert inside `input.ts` itself.
+
+## Cross-cutting note for opt/assets
+
+Two informational pings, no asks:
+- `lib/audio.ts:32-39` mutes on `prefers-reduced-motion` only at construction time. If you want it to live-respond to OS toggles, that's your call — I'm not going to plumb it.
+- My new TouchControls uses inline styles + a small inline `<style>` block for `:focus-visible` and `:active`. Flagging so you can migrate to a stylesheet during your CSS pass if desired.
+
+## Cross-cutting note for opt/perf (compactness)
+
+If your `useRef` refactor lands first (as planned per merge order), I'll rebase my work onto it. The seams above (input layer, PHYSICS import, reduced-motion gate, TouchControls mount point) are designed to be additive — no shape conflict expected. If your refactor moves the rAF loop or `setPlayer` mutator into its own module, point me to the new file path so I can update the integration list.
