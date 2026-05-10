@@ -164,7 +164,7 @@ opt/assets at the bottom** — they're moving the inline `<style>` to
 no conflict.
 
 ### 2. Ship `public/og-image.png` (1200×630, < 100 KB)
-**Status:** pending
+**Status:** done — shipped as `public/og-image.jpg` (82 KB) instead of PNG: anti-aliased typography compresses to ~84 KB JPEG vs ~220 KB PNG, and the 100 KB constraint is the hard one. OG/Twitter both accept JPEG. Generator at `scripts/build-og-image.mjs` (uses macOS `sips`, no npm dep). Metadata image URLs updated.
 **Files:** `public/og-image.png` (new). Optional: tiny generator
 script at `scripts/build-og-image.mjs` (committed for
 reproducibility, not run at build time).
