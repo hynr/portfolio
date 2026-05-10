@@ -171,7 +171,7 @@ of the file deletion. The only failure mode is a temporary "lint
 warning on dead code" window, which doesn't ship.
 
 ### 6. Prune dead selectors from `styles/game.css`
-**Status:** pending
+**Status:** done — deleted the entire file. Stricter grep (with word boundaries on `coin-spin`/`block-hit` to exclude the `anim-coin-spin` class from `content.css` and the `block-hit` audio event name) confirmed zero references on the active path. The `prefers-reduced-motion` block in this file was already covered more narrowly by `app/globals.css:51-60`. -205 lines of CSS.
 **Files:** `styles/game.css`.
 **Audit:** Active game (`SimpleMarioGame.tsx`) draws to canvas and
 uses none of `game-container`, `game-ui`, `game-score`,
