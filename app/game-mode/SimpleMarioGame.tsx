@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { level_1_1 } from '@/lib/level-data'
 import { playSound } from '@/lib/audio'
+import { buildSpriteAtlas, FRAME_H, FRAME_W, type SpriteAtlas } from './spriteAtlas'
 
 const PHYSICS = {
   GRAVITY: 1.0,  // Increased for weightier feel
@@ -24,6 +25,39 @@ const WORLD = {
   GROUND_HEIGHT: level_1_1.groundHeight
 }
 
+// Precomputed once from static level data — the loop must not recompute these.
+interface QuestionBlock {
+  x: number
+  y: number
+  title: string
+  description: string
+}
+
+const QUESTION_BLOCKS: QuestionBlock[] = level_1_1.blocks
+  .filter(b => b.type === 'question')
+  .map(b => {
+    const project = level_1_1.projects.find(p => p.id === b.projectId)
+    return {
+      x: b.x,
+      y: b.y,
+      title: project?.title || 'Project',
+      description: project?.description || 'Description'
+    }
+  })
+
+const QUESTION_INDEX_BY_XY: Map<string, number> = (() => {
+  const map = new Map<string, number>()
+  let qi = 0
+  for (const b of level_1_1.blocks) {
+    if (b.type === 'question') {
+      map.set(`${b.x},${b.y}`, qi++)
+    }
+  }
+  return map
+})()
+
+const BUSH_DECORATIONS = level_1_1.decorations.filter(d => d.type === 'bush')
+
 interface Player {
   x: number
   y: number
@@ -44,6 +78,7 @@ interface Player {
 }
 
 interface BlockAnimation {
+  active: boolean
   id: number
   y: number
   originalY: number
@@ -51,20 +86,43 @@ interface BlockAnimation {
 }
 
 interface CoinAnimation {
+  active: boolean
   x: number
   y: number
   velY: number
   lifetime: number
 }
 
+// Fixed-capacity pools so animation spawn/end don't allocate.
+// Level 1-1 has 4 question blocks; 8 slots per pool is plenty.
+const ANIM_POOL_SIZE = 8
+
+function makeBlockAnimPool(): BlockAnimation[] {
+  const arr: BlockAnimation[] = new Array(ANIM_POOL_SIZE)
+  for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+    arr[i] = { active: false, id: 0, y: 0, originalY: 0, animTime: 0 }
+  }
+  return arr
+}
+
+function makeCoinAnimPool(): CoinAnimation[] {
+  const arr: CoinAnimation[] = new Array(ANIM_POOL_SIZE)
+  for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+    arr[i] = { active: false, x: 0, y: 0, velY: 0, lifetime: 0 }
+  }
+  return arr
+}
+
 export default function SimpleMarioGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameLoopRef = useRef<number>()
   const keysRef = useRef<Set<string>>(new Set())
-  
-  const [player, setPlayer] = useState<Player>({
+
+  // Mutable game state lives in refs so the rAF loop binds once and per-frame
+  // mutations don't trigger React renders.
+  const playerRef = useRef<Player>({
     x: level_1_1.startPosition.x,
-    y: level_1_1.groundHeight - 64, // Place player on ground (64 is player height)
+    y: level_1_1.groundHeight - 64,
     width: 32,
     height: 64,
     velX: 0,
@@ -74,24 +132,33 @@ export default function SimpleMarioGame() {
     facing: 'right',
     animationFrame: 0,
     spriteState: 'idle',
-    lastGroundTime: Date.now(),
+    lastGroundTime: 0,
     jumpHoldTime: 0,
     isJumpHeld: false,
     squashTime: 0,
     scaleY: 1
   })
+  const cameraRef = useRef({ x: 0, y: 0 })
+  // Membership flags as typed arrays — no Set/array growth on the hot path.
+  const collectedCoinsRef = useRef<Uint8Array>(new Uint8Array(level_1_1.coins.length))
+  const hitBlocksRef = useRef<Uint8Array>(new Uint8Array(QUESTION_BLOCKS.length))
+  const blockAnimationsRef = useRef<BlockAnimation[]>(makeBlockAnimPool())
+  const coinAnimationsRef = useRef<CoinAnimation[]>(makeCoinAnimPool())
+  // Sprite atlas — built once at mount; replaces hundreds of fillRects/frame.
+  const atlasRef = useRef<SpriteAtlas | null>(null)
 
-  const [camera, setCamera] = useState({ x: 0, y: 0 })
+  // React state — only what the HUD overlay / text bubble needs to re-render.
   const [score, setScore] = useState(0)
-  const [collectedCoins, setCollectedCoins] = useState<Set<number>>(new Set())
-  const [hitBlocks, setHitBlocks] = useState<Set<number>>(new Set())
-  const [blockAnimations, setBlockAnimations] = useState<BlockAnimation[]>([])
-  const [coinAnimations, setCoinAnimations] = useState<CoinAnimation[]>([])
+  const [collectedCoinCount, setCollectedCoinCount] = useState(0)
   const [showTextBubble, setShowTextBubble] = useState(false)
   const [bubbleText, setBubbleText] = useState({ title: '', description: '' })
   const [displayedText, setDisplayedText] = useState({ title: '', description: '' })
   const [textAnimationIndex, setTextAnimationIndex] = useState(0)
   const [textFullyDisplayed, setTextFullyDisplayed] = useState(false)
+
+  // Mirror of showTextBubble for the rAF loop to read without re-binding.
+  const showTextBubbleRef = useRef(false)
+  useEffect(() => { showTextBubbleRef.current = showTextBubble }, [showTextBubble])
 
   // Keyboard event handling
   useEffect(() => {
@@ -164,14 +231,16 @@ export default function SimpleMarioGame() {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // CSS pixels → logical world units. Backing store is DPR-scaled, so we
+    // can't use canvas.width / rect.width; that would give backing pixels.
     const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    
-    const clickX = (e.clientX - rect.left) * scaleX
-    const clickY = (e.clientY - rect.top) * scaleY
-    
-    // Convert screen coordinates to world coordinates
+    const cssToLogicalX = WORLD.SCREEN_WIDTH / rect.width
+    const cssToLogicalY = WORLD.SCREEN_HEIGHT / rect.height
+
+    const clickX = (e.clientX - rect.left) * cssToLogicalX
+    const clickY = (e.clientY - rect.top) * cssToLogicalY
+
+    const camera = cameraRef.current
     const worldX = clickX + camera.x
     const worldY = clickY + camera.y
 
@@ -202,9 +271,9 @@ export default function SimpleMarioGame() {
         }
       }
     })
-  }, [camera])
+  }, [])
 
-  // Game loop
+  // Game loop — binds once per mount; all per-frame state is in refs.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -212,218 +281,211 @@ export default function SimpleMarioGame() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // DPR-aware backing store so pixel art stays crisp on retina.
+    // Loop still draws in logical SCREEN_WIDTH × SCREEN_HEIGHT coords; the
+    // single ctx.scale(dpr, dpr) below maps them to backing pixels.
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1
+    canvas.width = WORLD.SCREEN_WIDTH * dpr
+    canvas.height = WORLD.SCREEN_HEIGHT * dpr
+    ctx.scale(dpr, dpr)
+
+    // Seed coyote-time clock now that we're on the client.
+    playerRef.current.lastGroundTime = Date.now()
+
+    // Sky gradient is a function of canvas height only — build it once.
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, WORLD.SCREEN_HEIGHT)
+    skyGradient.addColorStop(0, '#87CEEB')
+    skyGradient.addColorStop(1, '#98FB98')
+
+    // Build the sprite atlas once per mount.
+    if (!atlasRef.current) {
+      atlasRef.current = buildSpriteAtlas()
+      // Dev-only smoke test. process.env.NODE_ENV is inlined at build time,
+      // so the dynamic import is dropped from the production bundle.
+      if (process.env.NODE_ENV !== 'production') {
+        const atlasForTest = atlasRef.current
+        import('./spriteAtlas.test')
+          .then(m => m.runSpriteAtlasSmokeTest(atlasForTest))
+          // eslint-disable-next-line no-console
+          .catch(err => console.error('[spriteAtlas.test] failed', err))
+      }
+    }
+    // Disable smoothing on the live ctx so drawImage from the atlas stays
+    // pixel-crisp (paired with image-rendering: pixelated on the <canvas>).
+    ctx.imageSmoothingEnabled = false
+
     const gameLoop = () => {
-      // Clear canvas
       ctx.clearRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
-      // Update player
-      setPlayer(prevPlayer => {
-        const newPlayer = { ...prevPlayer }
-        const keys = keysRef.current
-        const now = Date.now()
+      const player = playerRef.current
+      const camera = cameraRef.current
+      const keys = keysRef.current
+      const bubbleOpen = showTextBubbleRef.current
+      const now = Date.now()
 
-        // Update animation frame counter
-        newPlayer.animationFrame = (newPlayer.animationFrame + 1) % 16 // Cycle every 16 frames
+      // --- player update ---
+      player.animationFrame = (player.animationFrame + 1) % 16
 
-        // Update squash animation
-        if (newPlayer.squashTime > 0) {
-          newPlayer.squashTime -= 16 // Approx frame time
-          if (newPlayer.squashTime <= 0) {
-            newPlayer.scaleY = 1
-            newPlayer.squashTime = 0
-          } else {
-            newPlayer.scaleY = 0.9 // Squashed height
-          }
-        }
-
-        // Input handling with acceleration/deceleration
-        if (!showTextBubble) {  // Only process movement when bubble not shown
-          if (keys.has('ArrowLeft') || keys.has('KeyA')) {
-            newPlayer.targetVelX = -PHYSICS.MOVE_SPEED
-            newPlayer.facing = 'left'
-          } else if (keys.has('ArrowRight') || keys.has('KeyD')) {
-            newPlayer.targetVelX = PHYSICS.MOVE_SPEED
-            newPlayer.facing = 'right'
-          } else {
-            newPlayer.targetVelX = 0
-          }
-
-          // Smooth acceleration/deceleration
-          const diff = newPlayer.targetVelX - newPlayer.velX
-          if (Math.abs(diff) > 0.1) {
-            newPlayer.velX += diff * PHYSICS.ACCELERATION
-          } else {
-            newPlayer.velX = newPlayer.targetVelX
-          }
+      if (player.squashTime > 0) {
+        player.squashTime -= 16
+        if (player.squashTime <= 0) {
+          player.scaleY = 1
+          player.squashTime = 0
         } else {
-          // Stop movement when text bubble is shown
-          newPlayer.targetVelX = 0
-          newPlayer.velX *= PHYSICS.FRICTION
+          player.scaleY = 0.9
         }
+      }
 
-        // Jumping with coyote time and variable height
-        const jumpPressed = keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW')
-        const canJump = newPlayer.onGround || (now - newPlayer.lastGroundTime < PHYSICS.COYOTE_TIME)
-        
-        if (jumpPressed && canJump && !showTextBubble && !newPlayer.isJumpHeld) {
-          newPlayer.velY = PHYSICS.JUMP_VELOCITY
-          newPlayer.onGround = false
-          newPlayer.isJumpHeld = true
-          newPlayer.jumpHoldTime = 0
-          playSound('jump')
-        }
-
-        // Variable jump height - reduce gravity while holding jump
-        if (jumpPressed && newPlayer.isJumpHeld && newPlayer.velY < 0) {
-          newPlayer.jumpHoldTime += 16 // Approx frame time
-          if (newPlayer.jumpHoldTime < PHYSICS.MAX_JUMP_HOLD) {
-            // Apply reduced gravity for higher jump
-            newPlayer.velY += PHYSICS.GRAVITY_REDUCED
-          } else {
-            // Max hold time reached
-            newPlayer.velY += PHYSICS.GRAVITY
-          }
+      if (!bubbleOpen) {
+        if (keys.has('ArrowLeft') || keys.has('KeyA')) {
+          player.targetVelX = -PHYSICS.MOVE_SPEED
+          player.facing = 'left'
+        } else if (keys.has('ArrowRight') || keys.has('KeyD')) {
+          player.targetVelX = PHYSICS.MOVE_SPEED
+          player.facing = 'right'
         } else {
-          // Normal gravity
-          if (!newPlayer.onGround) {
-            newPlayer.velY += PHYSICS.GRAVITY
-          }
+          player.targetVelX = 0
         }
 
-        // Reset jump hold when button released
-        if (!jumpPressed) {
-          newPlayer.isJumpHeld = false
-          newPlayer.jumpHoldTime = 0
-        }
-
-        // Cap fall speed
-        if (newPlayer.velY > PHYSICS.MAX_FALL_SPEED) {
-          newPlayer.velY = PHYSICS.MAX_FALL_SPEED
-        }
-
-        // Update position
-        newPlayer.x += newPlayer.velX
-        newPlayer.y += newPlayer.velY
-
-        // Track last ground time for coyote time
-        if (newPlayer.onGround) {
-          newPlayer.lastGroundTime = now
-        }
-
-        // Determine sprite state based on movement
-        if (!newPlayer.onGround) {
-          // In the air - jumping or falling
-          newPlayer.spriteState = 'jump'
-        } else if (Math.abs(newPlayer.velX) > 0.5) {
-          // Walking - alternate between walk frames every 8 frames
-          newPlayer.spriteState = Math.floor(newPlayer.animationFrame / 8) % 2 === 0 ? 'walk1' : 'walk2'
+        const diff = player.targetVelX - player.velX
+        if (Math.abs(diff) > 0.1) {
+          player.velX += diff * PHYSICS.ACCELERATION
         } else {
-          // Standing still
-          newPlayer.spriteState = 'idle'
+          player.velX = player.targetVelX
         }
+      } else {
+        player.targetVelX = 0
+        player.velX *= PHYSICS.FRICTION
+      }
 
-        // Bounds checking
-        if (newPlayer.x < 0) {
-          newPlayer.x = 0
-          newPlayer.velX = 0
+      const jumpPressed = keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW')
+      const canJump = player.onGround || (now - player.lastGroundTime < PHYSICS.COYOTE_TIME)
+
+      if (jumpPressed && canJump && !bubbleOpen && !player.isJumpHeld) {
+        player.velY = PHYSICS.JUMP_VELOCITY
+        player.onGround = false
+        player.isJumpHeld = true
+        player.jumpHoldTime = 0
+        playSound('jump')
+      }
+
+      if (jumpPressed && player.isJumpHeld && player.velY < 0) {
+        player.jumpHoldTime += 16
+        if (player.jumpHoldTime < PHYSICS.MAX_JUMP_HOLD) {
+          player.velY += PHYSICS.GRAVITY_REDUCED
+        } else {
+          player.velY += PHYSICS.GRAVITY
         }
-        if (newPlayer.x > WORLD.WORLD_WIDTH - newPlayer.width) {
-          newPlayer.x = WORLD.WORLD_WIDTH - newPlayer.width
-          newPlayer.velX = 0
-        }
+      } else if (!player.onGround) {
+        player.velY += PHYSICS.GRAVITY
+      }
 
-        // Platform collision detection
-        const platforms = level_1_1.platforms
+      if (!jumpPressed) {
+        player.isJumpHeld = false
+        player.jumpHoldTime = 0
+      }
 
-        // Check platform collisions
-        let onPlatform = false
-        const wasAirborne = !newPlayer.onGround && newPlayer.velY > 0
-        
-        platforms.forEach(platform => {
-          // Check if player is above platform and falling down
-          if (newPlayer.x + newPlayer.width > platform.x &&
-              newPlayer.x < platform.x + platform.width &&
-              newPlayer.y + newPlayer.height <= platform.y + 10 &&
-              newPlayer.y + newPlayer.height >= platform.y - 10 &&
-              newPlayer.velY >= 0) {
-            newPlayer.y = platform.y - newPlayer.height
-            newPlayer.velY = 0
-            
-            // Trigger squash on landing
-            if (wasAirborne && !newPlayer.onGround) {
-              newPlayer.squashTime = 80
-              newPlayer.scaleY = 0.9
-              playSound('land')
-            }
-            
-            newPlayer.onGround = true
-            onPlatform = true
-          }
-        })
+      if (player.velY > PHYSICS.MAX_FALL_SPEED) {
+        player.velY = PHYSICS.MAX_FALL_SPEED
+      }
 
-        // Ground collision
-        if (newPlayer.y + newPlayer.height >= WORLD.GROUND_HEIGHT) {
-          newPlayer.y = WORLD.GROUND_HEIGHT - newPlayer.height
-          newPlayer.velY = 0
-          
-          // Trigger squash on landing
-          if (wasAirborne && !newPlayer.onGround) {
-            newPlayer.squashTime = 80
-            newPlayer.scaleY = 0.9
+      player.x += player.velX
+      player.y += player.velY
+
+      if (player.onGround) {
+        player.lastGroundTime = now
+      }
+
+      if (!player.onGround) {
+        player.spriteState = 'jump'
+      } else if (Math.abs(player.velX) > 0.5) {
+        player.spriteState = Math.floor(player.animationFrame / 8) % 2 === 0 ? 'walk1' : 'walk2'
+      } else {
+        player.spriteState = 'idle'
+      }
+
+      if (player.x < 0) {
+        player.x = 0
+        player.velX = 0
+      }
+      if (player.x > WORLD.WORLD_WIDTH - player.width) {
+        player.x = WORLD.WORLD_WIDTH - player.width
+        player.velX = 0
+      }
+
+      // --- platform collisions ---
+      const platforms = level_1_1.platforms
+      let onPlatform = false
+      const wasAirborne = !player.onGround && player.velY > 0
+
+      for (let i = 0, len = platforms.length; i < len; i++) {
+        const platform = platforms[i]
+        if (player.x + player.width > platform.x &&
+            player.x < platform.x + platform.width &&
+            player.y + player.height <= platform.y + 10 &&
+            player.y + player.height >= platform.y - 10 &&
+            player.velY >= 0) {
+          player.y = platform.y - player.height
+          player.velY = 0
+          if (wasAirborne && !player.onGround) {
+            player.squashTime = 80
+            player.scaleY = 0.9
             playSound('land')
           }
-          
-          newPlayer.onGround = true
-        } else if (!onPlatform && newPlayer.y + newPlayer.height < WORLD.GROUND_HEIGHT) {
-          newPlayer.onGround = false
+          player.onGround = true
+          onPlatform = true
         }
+      }
 
-        return newPlayer
-      })
+      if (player.y + player.height >= WORLD.GROUND_HEIGHT) {
+        player.y = WORLD.GROUND_HEIGHT - player.height
+        player.velY = 0
+        if (wasAirborne && !player.onGround) {
+          player.squashTime = 80
+          player.scaleY = 0.9
+          playSound('land')
+        }
+        player.onGround = true
+      } else if (!onPlatform && player.y + player.height < WORLD.GROUND_HEIGHT) {
+        player.onGround = false
+      }
 
-      // Check coin collisions
-      setCollectedCoins(prevCollected => {
-        const coins = level_1_1.coins
-
-        const newCollected = new Set(prevCollected)
-        
-        coins.forEach((coin, index) => {
-          if (!prevCollected.has(index) &&
-              player.x + player.width > coin.x &&
+      // --- coin collisions ---
+      const coins = level_1_1.coins
+      const collected = collectedCoinsRef.current
+      let coinsCollectedThisFrame = 0
+      for (let index = 0, len = coins.length; index < len; index++) {
+        if (collected[index] === 0) {
+          const coin = coins[index]
+          if (player.x + player.width > coin.x &&
               player.x < coin.x + 16 &&
               player.y + player.height > coin.y &&
               player.y < coin.y + 16) {
-            newCollected.add(index)
-            setScore(prev => prev + 100)
+            collected[index] = 1
+            coinsCollectedThisFrame++
             playSound('coin')
           }
-        })
-
-        return newCollected
-      })
-
-      // Check question block collisions from below
-      const questionBlocks = level_1_1.blocks.filter(b => b.type === 'question').map(b => {
-        const project = level_1_1.projects.find(p => p.id === b.projectId)
-        return {
-          x: b.x,
-          y: b.y,
-          title: project?.title || 'Project',
-          description: project?.description || 'Description'
         }
-      })
+      }
+      if (coinsCollectedThisFrame > 0) {
+        const delta = coinsCollectedThisFrame
+        setScore(prev => prev + 100 * delta)
+        setCollectedCoinCount(c => c + delta)
+      }
 
-      questionBlocks.forEach((block, index) => {
-        if (!hitBlocks.has(index) &&
-            // Player hitting block from below
-            player.x + player.width > block.x &&
+      // --- question-block collisions ---
+      const hits = hitBlocksRef.current
+      const blockAnims = blockAnimationsRef.current
+      const coinAnims = coinAnimationsRef.current
+      for (let index = 0, len = QUESTION_BLOCKS.length; index < len; index++) {
+        if (hits[index] === 1) continue
+        const block = QUESTION_BLOCKS[index]
+        if (player.x + player.width > block.x &&
             player.x < block.x + 32 &&
             player.y < block.y + 32 &&
             player.y + player.height > block.y &&
-            player.velY < 0) { // Player is moving upward
-          
-          // Add block to hit list
-          setHitBlocks(prev => new Set([...prev, index]))
+            player.velY < 0) {
+          hits[index] = 1
           setScore(prev => prev + 200)
           setBubbleText({ title: block.title, description: block.description })
           setDisplayedText({ title: '', description: '' })
@@ -431,74 +493,73 @@ export default function SimpleMarioGame() {
           setTextFullyDisplayed(false)
           setShowTextBubble(true)
           playSound('block-hit')
-          
-          // Start block animation
-          setBlockAnimations(prev => [...prev, {
-            id: index,
-            y: block.y,
-            originalY: block.y,
-            animTime: 0
-          }])
-          
-          // Spawn coin animation
-          setCoinAnimations(prev => [...prev, {
-            x: block.x + 8,
-            y: block.y - 16,
-            velY: -8,
-            lifetime: 60
-          }])
-        }
-      })
 
-      // Update block animations
-      setBlockAnimations(prev => prev.map(anim => {
+          // Spawn block animation in first inactive pool slot.
+          for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+            if (!blockAnims[s].active) {
+              const slot = blockAnims[s]
+              slot.active = true
+              slot.id = index
+              slot.y = block.y
+              slot.originalY = block.y
+              slot.animTime = 0
+              break
+            }
+          }
+          // Spawn coin "puff" animation in first inactive pool slot.
+          for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+            if (!coinAnims[s].active) {
+              const slot = coinAnims[s]
+              slot.active = true
+              slot.x = block.x + 8
+              slot.y = block.y - 16
+              slot.velY = -8
+              slot.lifetime = 60
+              break
+            }
+          }
+        }
+      }
+
+      // --- block animations (walk pool, mutate active slots in place) ---
+      for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+        const anim = blockAnims[i]
+        if (!anim.active) continue
         anim.animTime += 16
         if (anim.animTime < 100) {
-          // Pop up phase
           anim.y = anim.originalY - 8 * (1 - anim.animTime / 100)
         } else if (anim.animTime < 300) {
-          // Return phase
           const t = (anim.animTime - 100) / 200
           anim.y = anim.originalY - 8 * (1 - t)
         } else {
-          // Animation complete
           anim.y = anim.originalY
+          anim.active = false
         }
-        return anim
-      }).filter(anim => anim.animTime < 300))
+      }
 
-      // Update coin animations
-      setCoinAnimations(prev => prev.map(coin => {
-        coin.velY += 0.5 // Gravity for coin
-        coin.y += coin.velY
-        coin.lifetime -= 1
-        return coin
-      }).filter(coin => coin.lifetime > 0))
+      // --- coin animations (walk pool, mutate active slots in place) ---
+      for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+        const c = coinAnims[i]
+        if (!c.active) continue
+        c.velY += 0.5
+        c.y += c.velY
+        c.lifetime -= 1
+        if (c.lifetime <= 0) {
+          c.active = false
+        }
+      }
 
-      // Update camera to follow player with lag (lerp)
-      setCamera(prevCamera => {
-        const newCamera = { ...prevCamera }
-        const targetX = player.x - WORLD.SCREEN_WIDTH / 2
-        const clampedTargetX = Math.max(0, Math.min(targetX, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
-        
-        // Smooth camera movement with lerp
-        const diff = clampedTargetX - prevCamera.x
-        newCamera.x = prevCamera.x + diff * 0.1  // 0.1 lerp factor for smooth follow
-        
-        // Ensure camera stays in bounds
-        newCamera.x = Math.max(0, Math.min(newCamera.x, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
-        
-        return newCamera
-      })
+      // --- camera (in-place lerp) ---
+      const targetX = player.x - WORLD.SCREEN_WIDTH / 2
+      const clampedTargetX = Math.max(0, Math.min(targetX, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
+      camera.x = camera.x + (clampedTargetX - camera.x) * 0.1
+      camera.x = Math.max(0, Math.min(camera.x, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
 
-      // Draw background (sky)
-      const gradient = ctx.createLinearGradient(0, 0, 0, WORLD.SCREEN_HEIGHT)
-      gradient.addColorStop(0, '#87CEEB')
-      gradient.addColorStop(1, '#98FB98')
-      ctx.fillStyle = gradient
+      // --- background (sky) ---
+      ctx.fillStyle = skyGradient
       ctx.fillRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
-      // Draw clouds
+      // --- clouds ---
       ctx.fillStyle = 'white'
       for (let i = 0; i < 10; i++) {
         const cloudX = (i * 200 + 100) - camera.x
@@ -507,41 +568,37 @@ export default function SimpleMarioGame() {
         }
       }
 
-      // Draw bushes
-      const bushes = level_1_1.decorations.filter(d => d.type === 'bush')
-      
-      bushes.forEach(bush => {
+      // --- bushes ---
+      for (let i = 0, len = BUSH_DECORATIONS.length; i < len; i++) {
+        const bush = BUSH_DECORATIONS[i]
         const bushX = bush.x - camera.x
         if (bushX > -60 && bushX < WORLD.SCREEN_WIDTH) {
           drawBush(ctx, bushX, bush.y - camera.y)
         }
-      })
+      }
 
-      // Draw pipes (clickable for GitHub/LinkedIn)
+      // --- pipes ---
       const pipes = level_1_1.pipes
-      
-      pipes.forEach(pipe => {
+      for (let i = 0, len = pipes.length; i < len; i++) {
+        const pipe = pipes[i]
         const pipeX = pipe.x - camera.x
         if (pipeX > -40 && pipeX < WORLD.SCREEN_WIDTH) {
           drawPipe(ctx, pipeX, pipe.y - camera.y)
         }
-      })
+      }
 
-      // Draw ground with brick pattern
+      // --- ground ---
       const groundY = WORLD.GROUND_HEIGHT - camera.y
       const groundHeight = WORLD.SCREEN_HEIGHT - groundY
-      
-      // Base ground color
+
       ctx.fillStyle = '#8B4513'
       ctx.fillRect(0, groundY, WORLD.SCREEN_WIDTH, groundHeight)
-      
-      // Draw brick pattern
+
       ctx.fillStyle = '#A0522D'
       const brickWidth = 32
       const brickHeight = 16
       for (let x = 0; x < WORLD.SCREEN_WIDTH + brickWidth; x += brickWidth) {
         for (let y = groundY + 10; y < WORLD.SCREEN_HEIGHT; y += brickHeight) {
-          // Offset every other row
           const offsetX = (Math.floor((y - groundY) / brickHeight) % 2) * (brickWidth / 2)
           const brickX = x + offsetX
           if (brickX < WORLD.SCREEN_WIDTH) {
@@ -549,19 +606,12 @@ export default function SimpleMarioGame() {
           }
         }
       }
-      
-      // Draw grass on top of ground
+
       ctx.fillStyle = '#32CD32'
       ctx.fillRect(0, groundY, WORLD.SCREEN_WIDTH, 10)
 
-      // Draw platforms
       drawPlatforms(ctx, camera)
-
-      // Draw player
       drawPlayer(ctx, player, camera)
-
-      // Draw UI
-      drawUI(ctx, score)
 
       gameLoopRef.current = requestAnimationFrame(gameLoop)
     }
@@ -573,7 +623,8 @@ export default function SimpleMarioGame() {
         cancelAnimationFrame(gameLoopRef.current)
       }
     }
-  }, [player, camera, score, collectedCoins, hitBlocks, blockAnimations, coinAnimations, showTextBubble])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const drawCloud = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
     ctx.beginPath()
@@ -685,102 +736,110 @@ export default function SimpleMarioGame() {
 
   const drawPlatforms = (ctx: CanvasRenderingContext2D, camera: { x: number; y: number }) => {
     const platforms = level_1_1.platforms
+    const blockAnims = blockAnimationsRef.current
+    const hits = hitBlocksRef.current
+    const coinAnims = coinAnimationsRef.current
+    const collected = collectedCoinsRef.current
 
-    // Draw brick platforms
+    // Brick platforms
     ctx.fillStyle = '#8B4513'
-    platforms.forEach(platform => {
+    for (let p = 0, plen = platforms.length; p < plen; p++) {
+      const platform = platforms[p]
       const screenX = platform.x - camera.x
       const screenY = platform.y - camera.y
       if (screenX > -platform.width && screenX < WORLD.SCREEN_WIDTH) {
-        // Draw as brick blocks
         const blocksWide = platform.width / 32
         for (let i = 0; i < blocksWide; i++) {
           drawBlock(ctx, screenX + i * 32, screenY, 'brick')
         }
       }
-    })
+    }
 
-    // Draw all blocks
-    level_1_1.blocks.forEach((block, index) => {
+    // All blocks
+    const allBlocks = level_1_1.blocks
+    for (let b = 0, blen = allBlocks.length; b < blen; b++) {
+      const block = allBlocks[b]
       const screenX = block.x - camera.x
       const screenY = block.y - camera.y
-      
-      if (screenX > -32 && screenX < WORLD.SCREEN_WIDTH) {
-        if (block.type === 'question') {
-          // Check if block is animating
-          const questionIndex = level_1_1.blocks.filter(b => b.type === 'question').findIndex(b => b.x === block.x && b.y === block.y)
-          const animation = blockAnimations.find(a => a.id === questionIndex)
-          const animatedY = animation ? animation.y : block.y
-          const animatedScreenY = animatedY - camera.y
-          
-          // Draw used blocks as gray, unused as yellow
-          if (hitBlocks.has(questionIndex)) {
-            // Used block - draw as gray/empty block
-            ctx.fillStyle = '#8B4513'
-            ctx.fillRect(screenX, animatedScreenY, 32, 32)
-            ctx.fillStyle = '#654321'
-            ctx.fillRect(screenX + 2, animatedScreenY + 2, 28, 28)
-            // Draw empty/used indicator
-            ctx.strokeStyle = '#4A2C17'
-            ctx.lineWidth = 2
-            ctx.strokeRect(screenX + 4, animatedScreenY + 4, 24, 24)
-          } else {
-            drawBlock(ctx, screenX, animatedScreenY, 'question')
-          }
-        } else {
-          // Draw brick blocks
-          drawBlock(ctx, screenX, screenY, 'brick')
-        }
-      }
-    })
+      if (screenX <= -32 || screenX >= WORLD.SCREEN_WIDTH) continue
 
-    // Draw coin animations
-    coinAnimations.forEach(coin => {
+      if (block.type === 'question') {
+        const questionIndex = QUESTION_INDEX_BY_XY.get(`${block.x},${block.y}`) ?? -1
+        // Find this block's anim slot in the pool, if any.
+        let animY = block.y
+        for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+          const a = blockAnims[s]
+          if (a.active && a.id === questionIndex) {
+            animY = a.y
+            break
+          }
+        }
+        const animatedScreenY = animY - camera.y
+
+        if (questionIndex >= 0 && hits[questionIndex] === 1) {
+          ctx.fillStyle = '#8B4513'
+          ctx.fillRect(screenX, animatedScreenY, 32, 32)
+          ctx.fillStyle = '#654321'
+          ctx.fillRect(screenX + 2, animatedScreenY + 2, 28, 28)
+          ctx.strokeStyle = '#4A2C17'
+          ctx.lineWidth = 2
+          ctx.strokeRect(screenX + 4, animatedScreenY + 4, 24, 24)
+        } else {
+          drawBlock(ctx, screenX, animatedScreenY, 'question')
+        }
+      } else {
+        drawBlock(ctx, screenX, screenY, 'brick')
+      }
+    }
+
+    // Coin "puff" animations from question-block hits (walk pool)
+    for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+      const coin = coinAnims[s]
+      if (!coin.active) continue
       const screenX = coin.x - camera.x
       const screenY = coin.y - camera.y
-      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && coin.lifetime > 0) {
-        // Draw animated coin
+      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH) {
         ctx.fillStyle = '#FFD700'
         ctx.beginPath()
         ctx.arc(screenX + 8, screenY + 8, 8, 0, Math.PI * 2)
         ctx.fill()
-        
-        // Inner circle
+
         ctx.fillStyle = '#FFA500'
         ctx.beginPath()
         ctx.arc(screenX + 8, screenY + 8, 5, 0, Math.PI * 2)
         ctx.fill()
-        
-        // Score text (+200)
+
         if (coin.lifetime > 30) {
           ctx.fillStyle = 'white'
           ctx.font = 'bold 12px monospace'
           ctx.fillText('+200', screenX - 8, screenY - 4)
         }
       }
-    })
+    }
 
-    // Draw coins
+    // Static coins
     const coins = level_1_1.coins
-
-    coins.forEach((coin, index) => {
+    for (let i = 0, len = coins.length; i < len; i++) {
+      if (collected[i] === 1) continue
+      const coin = coins[i]
       const screenX = coin.x - camera.x
       const screenY = coin.y - camera.y
-      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && !collectedCoins.has(index)) {
+      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH) {
         drawCoin(ctx, screenX, screenY)
       }
-    })
+    }
   }
 
   const drawPlayer = (ctx: CanvasRenderingContext2D, player: Player, camera: { x: number; y: number }) => {
+    const atlas = atlasRef.current
+    if (!atlas) return
+
     const screenX = player.x - camera.x
     const screenY = player.y - camera.y
-    const pixelSize = 2
+    const frame = atlas.frameMap[player.spriteState]
 
-    // Save context for transformations
     ctx.save()
-    
-    // Apply squash effect and facing direction
+    // Anchor at bottom-center so squash + facing flip pivot correctly.
     if (player.facing === 'left') {
       ctx.translate(screenX + player.width / 2, screenY + player.height)
       ctx.scale(-1, player.scaleY)
@@ -791,143 +850,13 @@ export default function SimpleMarioGame() {
       ctx.translate(-player.width / 2, -player.height)
     }
 
-    const drawPixel = (x: number, y: number, color: string, width = pixelSize, height = pixelSize) => {
-      ctx.fillStyle = color
-      ctx.fillRect(x * pixelSize, y * pixelSize, width, height)
-    }
-
-    // Draw different sprite based on state
-    if (player.spriteState === 'jump') {
-      // JUMP SPRITE - arms up, legs spread
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Arms raised up
-      drawPixel(1, 9, '#FFE0BC'); drawPixel(2, 9, '#FFE0BC'); drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22'); drawPixel(13, 9, '#FFE0BC'); drawPixel(14, 9, '#FFE0BC')
-      drawPixel(0, 10, '#FFE0BC'); drawPixel(1, 10, '#FFE0BC'); drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22'); drawPixel(14, 10, '#FFE0BC'); drawPixel(15, 10, '#FFE0BC')
-      // Vest
-      drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22')
-      drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3')
-      // Pants - legs spread
-      drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513')
-      drawPixel(2, 14, '#8B4513'); drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513'); drawPixel(13, 14, '#8B4513')
-      drawPixel(1, 15, '#8B4513'); drawPixel(2, 15, '#8B4513'); drawPixel(3, 15, '#8B4513'); drawPixel(12, 15, '#8B4513'); drawPixel(13, 15, '#8B4513'); drawPixel(14, 15, '#8B4513')
-      // Legs spread
-      drawPixel(0, 16, '#FFE0BC'); drawPixel(1, 16, '#FFE0BC'); drawPixel(2, 16, '#FFE0BC'); drawPixel(13, 16, '#FFE0BC'); drawPixel(14, 16, '#FFE0BC'); drawPixel(15, 16, '#FFE0BC')
-      drawPixel(0, 17, '#FFE0BC'); drawPixel(1, 17, '#FFE0BC'); drawPixel(14, 17, '#FFE0BC'); drawPixel(15, 17, '#FFE0BC')
-      // Boots spread
-      drawPixel(0, 18, '#2F4F4F'); drawPixel(1, 18, '#2F4F4F'); drawPixel(14, 18, '#2F4F4F'); drawPixel(15, 18, '#2F4F4F')
-      drawPixel(0, 19, '#2F4F4F'); drawPixel(1, 19, '#2F4F4F'); drawPixel(14, 19, '#2F4F4F'); drawPixel(15, 19, '#2F4F4F')
-      
-    } else if (player.spriteState === 'walk1') {
-      // WALK FRAME 1 - left leg forward
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Vest with arms swinging
-      drawPixel(2, 9, '#FFE0BC'); drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22')
-      drawPixel(1, 10, '#FFE0BC'); drawPixel(2, 10, '#FFE0BC'); drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22'); drawPixel(13, 10, '#FFE0BC')
-      drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22'); drawPixel(13, 11, '#FFE0BC'); drawPixel(14, 11, '#FFE0BC')
-      drawPixel(2, 12, '#F5DEB3'); drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3'); drawPixel(13, 12, '#F5DEB3')
-      // Pants - walking pose
-      drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(7, 13, '#8B4513'); drawPixel(8, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513')
-      drawPixel(2, 14, '#8B4513'); drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(6, 14, '#8B4513'); drawPixel(9, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513')
-      drawPixel(1, 15, '#8B4513'); drawPixel(2, 15, '#8B4513'); drawPixel(3, 15, '#8B4513'); drawPixel(4, 15, '#8B4513'); drawPixel(10, 15, '#8B4513'); drawPixel(11, 15, '#8B4513'); drawPixel(12, 15, '#8B4513')
-      // Legs - left forward
-      drawPixel(0, 16, '#FFE0BC'); drawPixel(1, 16, '#FFE0BC'); drawPixel(2, 16, '#FFE0BC'); drawPixel(3, 16, '#FFE0BC'); drawPixel(11, 16, '#FFE0BC'); drawPixel(12, 16, '#FFE0BC')
-      drawPixel(0, 17, '#FFE0BC'); drawPixel(1, 17, '#FFE0BC'); drawPixel(2, 17, '#FFE0BC'); drawPixel(11, 17, '#FFE0BC'); drawPixel(12, 17, '#FFE0BC')
-      // Boots
-      drawPixel(0, 18, '#2F4F4F'); drawPixel(1, 18, '#2F4F4F'); drawPixel(2, 18, '#2F4F4F'); drawPixel(10, 18, '#2F4F4F'); drawPixel(11, 18, '#2F4F4F'); drawPixel(12, 18, '#2F4F4F')
-      drawPixel(0, 19, '#2F4F4F'); drawPixel(1, 19, '#2F4F4F'); drawPixel(2, 19, '#2F4F4F'); drawPixel(3, 19, '#2F4F4F'); drawPixel(10, 19, '#2F4F4F'); drawPixel(11, 19, '#2F4F4F'); drawPixel(12, 19, '#2F4F4F'); drawPixel(13, 19, '#2F4F4F')
-      drawPixel(0, 20, '#2F4F4F'); drawPixel(1, 20, '#2F4F4F'); drawPixel(2, 20, '#2F4F4F'); drawPixel(3, 20, '#2F4F4F'); drawPixel(10, 20, '#2F4F4F'); drawPixel(11, 20, '#2F4F4F'); drawPixel(12, 20, '#2F4F4F'); drawPixel(13, 20, '#2F4F4F')
-
-    } else if (player.spriteState === 'walk2') {
-      // WALK FRAME 2 - right leg forward
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Vest with opposite arm swing
-      drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22'); drawPixel(13, 9, '#FFE0BC')
-      drawPixel(2, 10, '#FFE0BC'); drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22'); drawPixel(13, 10, '#FFE0BC'); drawPixel(14, 10, '#FFE0BC')
-      drawPixel(1, 11, '#FFE0BC'); drawPixel(2, 11, '#FFE0BC'); drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22')
-      drawPixel(2, 12, '#F5DEB3'); drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3'); drawPixel(13, 12, '#F5DEB3')
-      // Pants - walking pose opposite
-      drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(7, 13, '#8B4513'); drawPixel(8, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513')
-      drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(6, 14, '#8B4513'); drawPixel(9, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513'); drawPixel(13, 14, '#8B4513')
-      drawPixel(3, 15, '#8B4513'); drawPixel(4, 15, '#8B4513'); drawPixel(5, 15, '#8B4513'); drawPixel(11, 15, '#8B4513'); drawPixel(12, 15, '#8B4513'); drawPixel(13, 15, '#8B4513'); drawPixel(14, 15, '#8B4513')
-      // Legs - right forward
-      drawPixel(3, 16, '#FFE0BC'); drawPixel(4, 16, '#FFE0BC'); drawPixel(12, 16, '#FFE0BC'); drawPixel(13, 16, '#FFE0BC'); drawPixel(14, 16, '#FFE0BC'); drawPixel(15, 16, '#FFE0BC')
-      drawPixel(3, 17, '#FFE0BC'); drawPixel(4, 17, '#FFE0BC'); drawPixel(13, 17, '#FFE0BC'); drawPixel(14, 17, '#FFE0BC'); drawPixel(15, 17, '#FFE0BC')
-      // Boots
-      drawPixel(3, 18, '#2F4F4F'); drawPixel(4, 18, '#2F4F4F'); drawPixel(5, 18, '#2F4F4F'); drawPixel(13, 18, '#2F4F4F'); drawPixel(14, 18, '#2F4F4F'); drawPixel(15, 18, '#2F4F4F')
-      drawPixel(2, 19, '#2F4F4F'); drawPixel(3, 19, '#2F4F4F'); drawPixel(4, 19, '#2F4F4F'); drawPixel(5, 19, '#2F4F4F'); drawPixel(12, 19, '#2F4F4F'); drawPixel(13, 19, '#2F4F4F'); drawPixel(14, 19, '#2F4F4F'); drawPixel(15, 19, '#2F4F4F')
-      drawPixel(2, 20, '#2F4F4F'); drawPixel(3, 20, '#2F4F4F'); drawPixel(4, 20, '#2F4F4F'); drawPixel(5, 20, '#2F4F4F'); drawPixel(12, 20, '#2F4F4F'); drawPixel(13, 20, '#2F4F4F'); drawPixel(14, 20, '#2F4F4F'); drawPixel(15, 20, '#2F4F4F')
-
-    } else {
-      // IDLE SPRITE - standing still
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Vest
-      drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22')
-      drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22')
-      drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22')
-      drawPixel(2, 12, '#F5DEB3'); drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3'); drawPixel(13, 12, '#F5DEB3')
-      // Pants
-      drawPixel(2, 13, '#8B4513'); drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(7, 13, '#8B4513'); drawPixel(8, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513'); drawPixel(13, 13, '#8B4513')
-      drawPixel(2, 14, '#8B4513'); drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(6, 14, '#8B4513'); drawPixel(7, 14, '#8B4513'); drawPixel(8, 14, '#8B4513'); drawPixel(9, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513'); drawPixel(13, 14, '#8B4513')
-      drawPixel(2, 15, '#FFE0BC'); drawPixel(3, 15, '#FFE0BC'); drawPixel(4, 15, '#8B4513'); drawPixel(5, 15, '#8B4513'); drawPixel(6, 15, '#8B4513'); drawPixel(7, 15, '#8B4513'); drawPixel(8, 15, '#8B4513'); drawPixel(9, 15, '#8B4513'); drawPixel(10, 15, '#8B4513'); drawPixel(11, 15, '#8B4513'); drawPixel(12, 15, '#FFE0BC'); drawPixel(13, 15, '#FFE0BC')
-      // Legs
-      drawPixel(2, 16, '#FFE0BC'); drawPixel(3, 16, '#FFE0BC'); drawPixel(4, 16, '#FFE0BC'); drawPixel(5, 16, '#FFE0BC'); drawPixel(6, 16, '#8B4513'); drawPixel(7, 16, '#8B4513'); drawPixel(8, 16, '#8B4513'); drawPixel(9, 16, '#8B4513'); drawPixel(10, 16, '#FFE0BC'); drawPixel(11, 16, '#FFE0BC'); drawPixel(12, 16, '#FFE0BC'); drawPixel(13, 16, '#FFE0BC')
-      drawPixel(2, 17, '#FFE0BC'); drawPixel(3, 17, '#FFE0BC'); drawPixel(4, 17, '#FFE0BC'); drawPixel(5, 17, '#FFE0BC'); drawPixel(6, 17, '#8B4513'); drawPixel(7, 17, '#8B4513'); drawPixel(8, 17, '#8B4513'); drawPixel(9, 17, '#8B4513'); drawPixel(10, 17, '#FFE0BC'); drawPixel(11, 17, '#FFE0BC'); drawPixel(12, 17, '#FFE0BC'); drawPixel(13, 17, '#FFE0BC')
-      // Boots
-      drawPixel(1, 18, '#2F4F4F'); drawPixel(2, 18, '#2F4F4F'); drawPixel(3, 18, '#2F4F4F'); drawPixel(4, 18, '#2F4F4F'); drawPixel(5, 18, '#2F4F4F'); drawPixel(10, 18, '#2F4F4F'); drawPixel(11, 18, '#2F4F4F'); drawPixel(12, 18, '#2F4F4F'); drawPixel(13, 18, '#2F4F4F'); drawPixel(14, 18, '#2F4F4F')
-      drawPixel(0, 19, '#2F4F4F'); drawPixel(1, 19, '#2F4F4F'); drawPixel(2, 19, '#2F4F4F'); drawPixel(3, 19, '#2F4F4F'); drawPixel(4, 19, '#2F4F4F'); drawPixel(5, 19, '#2F4F4F'); drawPixel(10, 19, '#2F4F4F'); drawPixel(11, 19, '#2F4F4F'); drawPixel(12, 19, '#2F4F4F'); drawPixel(13, 19, '#2F4F4F'); drawPixel(14, 19, '#2F4F4F'); drawPixel(15, 19, '#2F4F4F')
-      drawPixel(0, 20, '#2F4F4F'); drawPixel(1, 20, '#2F4F4F'); drawPixel(2, 20, '#2F4F4F'); drawPixel(3, 20, '#2F4F4F'); drawPixel(4, 20, '#2F4F4F'); drawPixel(5, 20, '#2F4F4F'); drawPixel(10, 20, '#2F4F4F'); drawPixel(11, 20, '#2F4F4F'); drawPixel(12, 20, '#2F4F4F'); drawPixel(13, 20, '#2F4F4F'); drawPixel(14, 20, '#2F4F4F'); drawPixel(15, 20, '#2F4F4F')
-      drawPixel(0, 21, '#2F4F4F'); drawPixel(1, 21, '#2F4F4F'); drawPixel(2, 21, '#2F4F4F'); drawPixel(3, 21, '#2F4F4F'); drawPixel(4, 21, '#2F4F4F'); drawPixel(5, 21, '#2F4F4F'); drawPixel(10, 21, '#2F4F4F'); drawPixel(11, 21, '#2F4F4F'); drawPixel(12, 21, '#2F4F4F'); drawPixel(13, 21, '#2F4F4F'); drawPixel(14, 21, '#2F4F4F'); drawPixel(15, 21, '#2F4F4F')
-    }
-
+    // One blit instead of ~250 fillStyle/fillRect pairs.
+    ctx.drawImage(
+      atlas.canvas as CanvasImageSource,
+      frame.sx, frame.sy, frame.sw, frame.sh,
+      0, 0, FRAME_W, FRAME_H,
+    )
     ctx.restore()
-  }
-
-  const drawUI = (ctx: CanvasRenderingContext2D, score: number) => {
-    // UI is now rendered as React overlays, not on canvas
   }
 
   return (
@@ -979,7 +908,7 @@ export default function SimpleMarioGame() {
           <div>WORLD 1-1</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: '#FFD700' }}>●</span>
-            <span>× {Array.from(collectedCoins).length.toString().padStart(2, '0')}</span>
+            <span>× {collectedCoinCount.toString().padStart(2, '0')}</span>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
