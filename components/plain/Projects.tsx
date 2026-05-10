@@ -3,6 +3,7 @@
 import Reveal from './Reveal'
 import CoinDisc from './CoinDisc'
 import { PORTFOLIO_DATA } from '@/lib/portfolio-data'
+import { useGameProgress } from '@/lib/mode-toggle'
 
 type AnyProject = (typeof PORTFOLIO_DATA.projects)[number] & {
   githubUrl?: string
@@ -73,6 +74,13 @@ function SectionRule() {
 }
 
 export default function Projects() {
+  const { discoveredProjects, hasPlayed } = useGameProgress()
+  const isDiscovered = (id: string) => discoveredProjects.includes(id)
+  const total = PORTFOLIO_DATA.projects.length
+  const found = discoveredProjects.filter((id) =>
+    PORTFOLIO_DATA.projects.some((p) => p.id === id)
+  ).length
+
   return (
     <section id="projects" className="bg-surface">
       {/* Section header */}
@@ -91,20 +99,34 @@ export default function Projects() {
               made it past the demo.
             </h2>
           </Reveal>
+          {hasPlayed && (
+            <Reveal delay={2}>
+              <p className="mt-6 inline-flex items-center gap-2 font-mono text-[0.72rem] uppercase tracking-[0.12em] text-pipe-deep">
+                <CoinDisc size={14} spin />
+                You found {found}/{total} projects in the Mario level
+              </p>
+            </Reveal>
+          )}
         </div>
       </div>
 
       <SectionRule />
 
       {/* MODULE 1 — Therasort: text + pull quote */}
-      <article className="proj-module section-py-default">
+      <article
+        className="proj-module section-py-default relative data-[discovered=true]:before:content-[''] data-[discovered=true]:before:absolute data-[discovered=true]:before:left-0 data-[discovered=true]:before:right-0 data-[discovered=true]:before:top-0 data-[discovered=true]:before:h-[2px] data-[discovered=true]:before:bg-brick"
+        data-discovered={isDiscovered(therasort.id) ? 'true' : undefined}
+      >
         <div className="mx-auto max-w-[1200px] px-6 grid md:grid-cols-12 gap-10 md:gap-14 items-start">
           <Reveal as="div" className="md:col-span-7">
             <div className="proj-kicker mb-3">
               01 · AI/ML · 2024
             </div>
-            <h3 className="text-h2 font-medium text-ink mb-6">
-              {therasort.title}
+            <h3 className="text-h2 font-medium text-ink mb-6 flex items-center gap-3">
+              <span>{therasort.title}</span>
+              {isDiscovered(therasort.id) && (
+                <CoinDisc size={18} className="opacity-90" />
+              )}
             </h3>
             <p className="text-base leading-relaxed text-ink-soft mb-5 max-w-[60ch]">
               {therasort.longDescription}
@@ -143,14 +165,20 @@ export default function Projects() {
       <SectionRule />
 
       {/* MODULE 2 — Mario Portfolio: meta, narrower, with pipe */}
-      <article className="proj-module section-py-default bg-surface-soft">
+      <article
+        className="proj-module section-py-default bg-surface-soft relative data-[discovered=true]:before:content-[''] data-[discovered=true]:before:absolute data-[discovered=true]:before:left-0 data-[discovered=true]:before:right-0 data-[discovered=true]:before:top-0 data-[discovered=true]:before:h-[2px] data-[discovered=true]:before:bg-brick"
+        data-discovered={isDiscovered(portfolio.id) ? 'true' : undefined}
+      >
         <div className="mx-auto max-w-[820px] px-6">
           <Reveal>
             <div className="proj-kicker mb-3">
               02 · Full Stack · 2024
             </div>
-            <h3 className="text-h2 font-medium text-ink mb-6">
-              {portfolio.title}
+            <h3 className="text-h2 font-medium text-ink mb-6 flex items-center gap-3">
+              <span>{portfolio.title}</span>
+              {isDiscovered(portfolio.id) && (
+                <CoinDisc size={18} className="opacity-90" />
+              )}
             </h3>
           </Reveal>
 
@@ -182,7 +210,10 @@ export default function Projects() {
       <SectionRule />
 
       {/* MODULE 3 — AWS Pipeline: monumental number */}
-      <article className="proj-module section-py-default">
+      <article
+        className="proj-module section-py-default relative data-[discovered=true]:before:content-[''] data-[discovered=true]:before:absolute data-[discovered=true]:before:left-0 data-[discovered=true]:before:right-0 data-[discovered=true]:before:top-0 data-[discovered=true]:before:h-[2px] data-[discovered=true]:before:bg-brick"
+        data-discovered={isDiscovered(pipeline.id) ? 'true' : undefined}
+      >
         <div className="mx-auto max-w-[1200px] px-6 grid md:grid-cols-12 gap-10 md:gap-14 items-start">
           <Reveal as="div" className="md:col-span-5">
             <div className="proj-kicker mb-3">
@@ -205,8 +236,11 @@ export default function Projects() {
           </Reveal>
 
           <Reveal as="div" delay={2} className="md:col-span-7 md:pt-10">
-            <h3 className="text-h2 font-medium text-ink mb-6">
-              {pipeline.title}
+            <h3 className="text-h2 font-medium text-ink mb-6 flex items-center gap-3">
+              <span>{pipeline.title}</span>
+              {isDiscovered(pipeline.id) && (
+                <CoinDisc size={18} className="opacity-90" />
+              )}
             </h3>
             <p className="text-base leading-relaxed text-ink-soft mb-5 max-w-[60ch]">
               {pipeline.longDescription}
@@ -225,7 +259,10 @@ export default function Projects() {
       <SectionRule />
 
       {/* MODULE 4 — Analytics Dashboard: SVG sparkline + text */}
-      <article className="proj-module section-py-default">
+      <article
+        className="proj-module section-py-default relative data-[discovered=true]:before:content-[''] data-[discovered=true]:before:absolute data-[discovered=true]:before:left-0 data-[discovered=true]:before:right-0 data-[discovered=true]:before:top-0 data-[discovered=true]:before:h-[2px] data-[discovered=true]:before:bg-brick"
+        data-discovered={isDiscovered(dashboard.id) ? 'true' : undefined}
+      >
         <div className="mx-auto max-w-[1200px] px-6 grid md:grid-cols-12 gap-10 md:gap-14 items-end">
           <Reveal as="div" className="md:col-span-6">
             <div className="rounded-sm border border-rule bg-surface-soft p-6">
@@ -277,8 +314,11 @@ export default function Projects() {
             <div className="proj-kicker mb-3">
               04 · Frontend · 2023
             </div>
-            <h3 className="text-h2 font-medium text-ink mb-6">
-              {dashboard.title}
+            <h3 className="text-h2 font-medium text-ink mb-6 flex items-center gap-3">
+              <span>{dashboard.title}</span>
+              {isDiscovered(dashboard.id) && (
+                <CoinDisc size={18} className="opacity-90" />
+              )}
             </h3>
             <p className="text-base leading-relaxed text-ink-soft mb-5 max-w-[60ch]">
               Fifty-plus interactive charts, sub-100ms render times, WebSocket

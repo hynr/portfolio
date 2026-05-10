@@ -246,7 +246,7 @@ call timing (`recordCoin()` on coin pickup; `recordProject(id)` on
 question-block hit; `setHighScore(n)` on level complete).
 
 ### 4. Bridge: render game-progress reveals in `ContentMode`
-**Status:** pending
+**Status:** done — `useGameProgress()` called inside `Projects` (header badge "you found N/4 in the Mario level" + per-card `data-discovered="true"` attr + 2px brick top accent + small `<CoinDisc size={18}>` next to discovered titles) and `ContentMode` (footer "Your high score: NNNNNN" line). All four projects still render unconditionally; discovered just adds badges. SSR-safe — first render returns `EMPTY` so server-rendered markup matches client first paint, then the `useEffect` reads localStorage. `app/page.tsx` is **literally untouched** (perf agent's surface preserved). Side-benefit: footer copyright now reads from `PORTFOLIO_DATA.bio` (item 7's footer scope landed here naturally).
 **Files:** `app/page.tsx` (one new line: pass progress down to
 `<ContentMode />`), `app/content-mode/ContentMode.tsx`,
 `components/plain/Projects.tsx`.

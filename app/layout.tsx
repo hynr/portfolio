@@ -28,7 +28,9 @@ const siteName = `${bio.name} · ${bio.title}`
 const pageTitle = `${bio.name} · Engineer`
 const githubUrl = links.find((l) => l.type === 'github')?.url
 const linkedinUrl = links.find((l) => l.type === 'linkedin')?.url
-const sameAs = [githubUrl, linkedinUrl].filter((u): u is string => Boolean(u))
+const sameAs: string[] = [githubUrl, linkedinUrl].filter(
+  (u): u is NonNullable<typeof u> => Boolean(u)
+)
 
 export const metadata: Metadata = {
   metadataBase: new URL(bio.url),
