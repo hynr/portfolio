@@ -23,6 +23,7 @@ class AudioManager {
   private sounds: Map<SoundEvent, AudioBuffer> = new Map()
   private muted: boolean = false
   private initialized: boolean = false
+  private listenersBound: boolean = false
   private config: AudioConfig = {
     defaultVolume: 0.3,
     footstepVolume: 0.1
@@ -32,36 +33,38 @@ class AudioManager {
     if (typeof window !== 'undefined') {
       const savedMuteState = localStorage.getItem('audio-muted')
       this.muted = savedMuteState === 'true'
-      
+
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
       if (reducedMotion) {
         this.muted = true
       }
-      
-      this.setupAudioContext()
     }
   }
 
-  private setupAudioContext() {
+  // Bind the document-level interaction listeners that unlock the
+  // AudioContext on first click/keydown/touchstart. Idempotent — safe to
+  // call multiple times. Game-mode mounts call this; content-mode never
+  // does, so content-mode visitors never construct an AudioContext or
+  // bind these listeners.
+  enableInteractionInit() {
+    if (this.listenersBound || typeof document === 'undefined') return
+    this.listenersBound = true
+
     const initAudio = () => {
       if (!this.initialized && typeof window !== 'undefined') {
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
         this.initialized = true
         this.preloadSounds()
-        
-        if (typeof document !== 'undefined') {
-          document.removeEventListener('click', initAudio)
-          document.removeEventListener('keydown', initAudio)
-          document.removeEventListener('touchstart', initAudio)
-        }
+
+        document.removeEventListener('click', initAudio)
+        document.removeEventListener('keydown', initAudio)
+        document.removeEventListener('touchstart', initAudio)
       }
     }
 
-    if (typeof document !== 'undefined') {
-      document.addEventListener('click', initAudio, { once: true })
-      document.addEventListener('keydown', initAudio, { once: true })
-      document.addEventListener('touchstart', initAudio, { once: true })
-    }
+    document.addEventListener('click', initAudio, { once: true })
+    document.addEventListener('keydown', initAudio, { once: true })
+    document.addEventListener('touchstart', initAudio, { once: true })
   }
 
   private async preloadSounds() {
@@ -147,6 +150,13 @@ class AudioManager {
 }
 
 const audioManager = new AudioManager()
+
+// Game-mode mount calls this once. Content-mode never calls it, so
+// content-mode visitors never construct an AudioContext and never bind
+// document-level click/keydown/touchstart listeners.
+export function initAudioOnInteraction(): void {
+  audioManager.enableInteractionInit()
+}
 
 export function playSound(event: SoundEvent): void {
   audioManager.play(event)

@@ -64,7 +64,7 @@ under a normalized name, fall back to `next/font/local` with a woff2
 in `public/fonts/` (font is OFL-licensed, redistribution is fine).
 
 ### 2. Lazy `AudioContext` — never construct on content-mode page loads
-**Status:** pending
+**Status:** done — `setupAudioContext()` removed from constructor; replaced with `enableInteractionInit()` exposed as `initAudioOnInteraction()`. Content-mode never calls it. Cross-cutting note for `opt/perf` updated below: please call `initAudioOnInteraction()` once on `SimpleMarioGame.tsx` mount.
 **Files:** `lib/audio.ts`.
 **Change:** Stop running `setupAudioContext()` from the
 `AudioManager` constructor (`lib/audio.ts:41`). Move the
