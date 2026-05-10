@@ -279,6 +279,10 @@ Targets per BRIEF:
 
 ## Status
 
+All 7 items landed in 7 commits between baseline `d5215ce0` and HEAD.
+See `REPORT.md` for the full before/after numbers, methodology for the
+in-browser traces I cannot capture from a CLI, and goal-by-goal verdict.
+
 | # | Item | Status | Outcome |
 |---|---|---|---|
 | 1 | Hoist state to `useRef` | done | rAF effect dep array now `[]`; player/camera/hitBlocks/blockAnims/coinAnims/collectedCoins on refs; HUD reads `collectedCoinCount`. Static-export build passes (106 kB first-load JS, baseline). |
