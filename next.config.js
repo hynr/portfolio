@@ -15,12 +15,10 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BASE_PATH: isGhPages ? repoBasePath : '',
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 }
 
-module.exports = nextConfig
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+})
+
+module.exports = withBundleAnalyzer(nextConfig)

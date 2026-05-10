@@ -1,9 +1,23 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import ContentMode from './content-mode/ContentMode'
-import GameMode from './game-mode/GameMode'
 import { setModePreference } from '@/lib/mode-toggle'
+
+const GameMode = dynamic(() => import('./game-mode/GameMode'), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-[#5C94FC] text-white"
+      style={{ fontFamily: '"Press Start 2P", monospace' }}
+      aria-busy="true"
+      aria-label="Loading game mode"
+    >
+      <div className="text-xs tracking-widest">LOADING…</div>
+    </div>
+  ),
+})
 
 export default function Page() {
   // Always start on content. Game mode is reachable only by clicking the
