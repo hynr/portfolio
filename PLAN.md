@@ -1,8 +1,16 @@
 ---
 worktree: mario-bundle
 branch: opt/bundle
-status: awaiting approval
+status: in-progress
 ---
+
+## Decisions (lead, 2026-05-10)
+
+- Plan **approved**, all 10 items.
+- Screenshots: **move to `docs/screenshots/` and commit**.
+- `@next/bundle-analyzer` dev-dep: **approved**.
+- Test runner: **`tsx` + `npm test` alias approved**. I'll add the
+  script in item 6; gameplay agent owns the test file.
 
 # PLAN — `opt/bundle`
 
@@ -344,7 +352,7 @@ single canonical script.
 
 ## Status board
 
-- [ ] Item 1 — repo hygiene
+- [x] Item 1 — repo hygiene — moved 4 screenshots to docs/screenshots/; tsbuildinfo already gitignored (brief was wrong about it being tracked)
 - [ ] Item 2 — tsconfig target es2020
 - [ ] Item 3 — code-split game-mode
 - [ ] Item 4 — re-enable type/lint
