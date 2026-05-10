@@ -197,7 +197,7 @@ not an npm dep) vs hand-export from Figma vs add `sharp` as a
 dev-dep. Recommended: `rsvg-convert` if installed, else hand-export.
 
 ### 3. Extend `lib/mode-toggle.ts` with `useGameProgress` hook + types
-**Status:** pending
+**Status:** done — `useGameProgress()` reader hook + `recordCoin()` / `recordProject(id)` / `setHighScore(n)` writers shipped. SSR-safe (returns `EMPTY` on first render to match server markup), Safari-private-mode-safe (every localStorage call wrapped in try/catch). Cross-tab sync via `storage` event; same-tab sync via `portfolio:progress` `CustomEvent`. Existing `getModePreference` / `setModePreference` untouched. Storage keys: `portfolio:coins`, `portfolio:projects`, `portfolio:highScore`, `portfolio:hasPlayed`.
 **Files:** `lib/mode-toggle.ts` (extend, don't rename — keeping the
 file name minimizes import churn for perf agent).
 **Change:** Add the hook surface promised to perf agent in the brief:
