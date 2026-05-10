@@ -11,7 +11,15 @@ type FormState = {
   message: string
 }
 
+const findLink = (type: typeof PORTFOLIO_DATA.links[number]['type']) =>
+  PORTFOLIO_DATA.links.find((l) => l.type === type)
+
+const stripUrlScheme = (url: string) =>
+  url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+
 export default function Contact() {
+  const githubLink = findLink('github')
+  const linkedinLink = findLink('linkedin')
   const [form, setForm] = useState<FormState>({ name: '', email: '', message: '' })
   const [sent, setSent] = useState(false)
   const [oneUpKey, setOneUpKey] = useState(0)
@@ -83,37 +91,41 @@ export default function Contact() {
                     {PORTFOLIO_DATA.bio.email}
                   </a>
                 </li>
-                <li>
-                  <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
-                    GitHub
-                  </p>
-                  <a
-                    href="https://github.com/hynr"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-wipe link-pipe text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
-                  >
-                    github.com/hynr
-                  </a>
-                </li>
-                <li>
-                  <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
-                    LinkedIn
-                  </p>
-                  <a
-                    href="https://linkedin.com/in/huzaifa-naroo"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-wipe link-sky text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
-                  >
-                    linkedin.com/in/huzaifa-naroo
-                  </a>
-                </li>
+                {githubLink && (
+                  <li>
+                    <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
+                      GitHub
+                    </p>
+                    <a
+                      href={githubLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link-wipe link-pipe text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
+                    >
+                      {stripUrlScheme(githubLink.url)}
+                    </a>
+                  </li>
+                )}
+                {linkedinLink && (
+                  <li>
+                    <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
+                      LinkedIn
+                    </p>
+                    <a
+                      href={linkedinLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link-wipe link-sky text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
+                    >
+                      {stripUrlScheme(linkedinLink.url)}
+                    </a>
+                  </li>
+                )}
                 <li>
                   <p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft mb-1">
                     Based in
                   </p>
-                  <p className="text-lg text-ink">Columbia, MD · open to remote</p>
+                  <p className="text-lg text-ink">{PORTFOLIO_DATA.bio.location} · open to remote</p>
                 </li>
               </ul>
             </Reveal>

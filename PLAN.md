@@ -377,7 +377,7 @@ keyboard-only; this audit makes it visibly so.
 **Risk:** Low. Tailwind class additions only.
 
 ### 7. Wire footer + Nav + Contact socials to `PORTFOLIO_DATA` (single source of truth)
-**Status:** pending
+**Status:** done — Nav monogram now reads `PORTFOLIO_DATA.bio.name`. Contact GitHub/LinkedIn read from `PORTFOLIO_DATA.links` via `findLink(type)` helper, with `stripUrlScheme()` for the visible label. Contact "Based in" location pulled from `PORTFOLIO_DATA.bio.location`. Footer was already swapped during item 4. `Hero.tsx` literal name kept by design (the `<br/>` split is a typographic choice).
 **Files:** `app/content-mode/ContentMode.tsx`,
 `components/plain/Nav.tsx`, `components/plain/Contact.tsx`.
 **Change:**
