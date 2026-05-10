@@ -61,10 +61,12 @@ export default function SimpleMarioGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameLoopRef = useRef<number>()
   const keysRef = useRef<Set<string>>(new Set())
-  
-  const [player, setPlayer] = useState<Player>({
+
+  // Mutable game state lives in refs so the rAF loop binds once and per-frame
+  // mutations don't trigger React renders.
+  const playerRef = useRef<Player>({
     x: level_1_1.startPosition.x,
-    y: level_1_1.groundHeight - 64, // Place player on ground (64 is player height)
+    y: level_1_1.groundHeight - 64,
     width: 32,
     height: 64,
     velX: 0,
@@ -74,24 +76,30 @@ export default function SimpleMarioGame() {
     facing: 'right',
     animationFrame: 0,
     spriteState: 'idle',
-    lastGroundTime: Date.now(),
+    lastGroundTime: 0,
     jumpHoldTime: 0,
     isJumpHeld: false,
     squashTime: 0,
     scaleY: 1
   })
+  const cameraRef = useRef({ x: 0, y: 0 })
+  const collectedCoinsRef = useRef<Set<number>>(new Set())
+  const hitBlocksRef = useRef<Set<number>>(new Set())
+  const blockAnimationsRef = useRef<BlockAnimation[]>([])
+  const coinAnimationsRef = useRef<CoinAnimation[]>([])
 
-  const [camera, setCamera] = useState({ x: 0, y: 0 })
+  // React state — only what the HUD overlay / text bubble needs to re-render.
   const [score, setScore] = useState(0)
-  const [collectedCoins, setCollectedCoins] = useState<Set<number>>(new Set())
-  const [hitBlocks, setHitBlocks] = useState<Set<number>>(new Set())
-  const [blockAnimations, setBlockAnimations] = useState<BlockAnimation[]>([])
-  const [coinAnimations, setCoinAnimations] = useState<CoinAnimation[]>([])
+  const [collectedCoinCount, setCollectedCoinCount] = useState(0)
   const [showTextBubble, setShowTextBubble] = useState(false)
   const [bubbleText, setBubbleText] = useState({ title: '', description: '' })
   const [displayedText, setDisplayedText] = useState({ title: '', description: '' })
   const [textAnimationIndex, setTextAnimationIndex] = useState(0)
   const [textFullyDisplayed, setTextFullyDisplayed] = useState(false)
+
+  // Mirror of showTextBubble for the rAF loop to read without re-binding.
+  const showTextBubbleRef = useRef(false)
+  useEffect(() => { showTextBubbleRef.current = showTextBubble }, [showTextBubble])
 
   // Keyboard event handling
   useEffect(() => {
@@ -167,11 +175,12 @@ export default function SimpleMarioGame() {
     const rect = canvas.getBoundingClientRect()
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
-    
+
     const clickX = (e.clientX - rect.left) * scaleX
     const clickY = (e.clientY - rect.top) * scaleY
-    
+
     // Convert screen coordinates to world coordinates
+    const camera = cameraRef.current
     const worldX = clickX + camera.x
     const worldY = clickY + camera.y
 
@@ -202,9 +211,9 @@ export default function SimpleMarioGame() {
         }
       }
     })
-  }, [camera])
+  }, [])
 
-  // Game loop
+  // Game loop — binds once per mount; all per-frame state is in refs.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -212,197 +221,166 @@ export default function SimpleMarioGame() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // Seed coyote-time clock now that we're on the client.
+    playerRef.current.lastGroundTime = Date.now()
+
     const gameLoop = () => {
-      // Clear canvas
       ctx.clearRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
-      // Update player
-      setPlayer(prevPlayer => {
-        const newPlayer = { ...prevPlayer }
-        const keys = keysRef.current
-        const now = Date.now()
+      const player = playerRef.current
+      const camera = cameraRef.current
+      const keys = keysRef.current
+      const bubbleOpen = showTextBubbleRef.current
+      const now = Date.now()
 
-        // Update animation frame counter
-        newPlayer.animationFrame = (newPlayer.animationFrame + 1) % 16 // Cycle every 16 frames
+      // --- player update ---
+      player.animationFrame = (player.animationFrame + 1) % 16
 
-        // Update squash animation
-        if (newPlayer.squashTime > 0) {
-          newPlayer.squashTime -= 16 // Approx frame time
-          if (newPlayer.squashTime <= 0) {
-            newPlayer.scaleY = 1
-            newPlayer.squashTime = 0
-          } else {
-            newPlayer.scaleY = 0.9 // Squashed height
-          }
-        }
-
-        // Input handling with acceleration/deceleration
-        if (!showTextBubble) {  // Only process movement when bubble not shown
-          if (keys.has('ArrowLeft') || keys.has('KeyA')) {
-            newPlayer.targetVelX = -PHYSICS.MOVE_SPEED
-            newPlayer.facing = 'left'
-          } else if (keys.has('ArrowRight') || keys.has('KeyD')) {
-            newPlayer.targetVelX = PHYSICS.MOVE_SPEED
-            newPlayer.facing = 'right'
-          } else {
-            newPlayer.targetVelX = 0
-          }
-
-          // Smooth acceleration/deceleration
-          const diff = newPlayer.targetVelX - newPlayer.velX
-          if (Math.abs(diff) > 0.1) {
-            newPlayer.velX += diff * PHYSICS.ACCELERATION
-          } else {
-            newPlayer.velX = newPlayer.targetVelX
-          }
+      if (player.squashTime > 0) {
+        player.squashTime -= 16
+        if (player.squashTime <= 0) {
+          player.scaleY = 1
+          player.squashTime = 0
         } else {
-          // Stop movement when text bubble is shown
-          newPlayer.targetVelX = 0
-          newPlayer.velX *= PHYSICS.FRICTION
+          player.scaleY = 0.9
         }
+      }
 
-        // Jumping with coyote time and variable height
-        const jumpPressed = keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW')
-        const canJump = newPlayer.onGround || (now - newPlayer.lastGroundTime < PHYSICS.COYOTE_TIME)
-        
-        if (jumpPressed && canJump && !showTextBubble && !newPlayer.isJumpHeld) {
-          newPlayer.velY = PHYSICS.JUMP_VELOCITY
-          newPlayer.onGround = false
-          newPlayer.isJumpHeld = true
-          newPlayer.jumpHoldTime = 0
-          playSound('jump')
-        }
-
-        // Variable jump height - reduce gravity while holding jump
-        if (jumpPressed && newPlayer.isJumpHeld && newPlayer.velY < 0) {
-          newPlayer.jumpHoldTime += 16 // Approx frame time
-          if (newPlayer.jumpHoldTime < PHYSICS.MAX_JUMP_HOLD) {
-            // Apply reduced gravity for higher jump
-            newPlayer.velY += PHYSICS.GRAVITY_REDUCED
-          } else {
-            // Max hold time reached
-            newPlayer.velY += PHYSICS.GRAVITY
-          }
+      if (!bubbleOpen) {
+        if (keys.has('ArrowLeft') || keys.has('KeyA')) {
+          player.targetVelX = -PHYSICS.MOVE_SPEED
+          player.facing = 'left'
+        } else if (keys.has('ArrowRight') || keys.has('KeyD')) {
+          player.targetVelX = PHYSICS.MOVE_SPEED
+          player.facing = 'right'
         } else {
-          // Normal gravity
-          if (!newPlayer.onGround) {
-            newPlayer.velY += PHYSICS.GRAVITY
-          }
+          player.targetVelX = 0
         }
 
-        // Reset jump hold when button released
-        if (!jumpPressed) {
-          newPlayer.isJumpHeld = false
-          newPlayer.jumpHoldTime = 0
-        }
-
-        // Cap fall speed
-        if (newPlayer.velY > PHYSICS.MAX_FALL_SPEED) {
-          newPlayer.velY = PHYSICS.MAX_FALL_SPEED
-        }
-
-        // Update position
-        newPlayer.x += newPlayer.velX
-        newPlayer.y += newPlayer.velY
-
-        // Track last ground time for coyote time
-        if (newPlayer.onGround) {
-          newPlayer.lastGroundTime = now
-        }
-
-        // Determine sprite state based on movement
-        if (!newPlayer.onGround) {
-          // In the air - jumping or falling
-          newPlayer.spriteState = 'jump'
-        } else if (Math.abs(newPlayer.velX) > 0.5) {
-          // Walking - alternate between walk frames every 8 frames
-          newPlayer.spriteState = Math.floor(newPlayer.animationFrame / 8) % 2 === 0 ? 'walk1' : 'walk2'
+        const diff = player.targetVelX - player.velX
+        if (Math.abs(diff) > 0.1) {
+          player.velX += diff * PHYSICS.ACCELERATION
         } else {
-          // Standing still
-          newPlayer.spriteState = 'idle'
+          player.velX = player.targetVelX
         }
+      } else {
+        player.targetVelX = 0
+        player.velX *= PHYSICS.FRICTION
+      }
 
-        // Bounds checking
-        if (newPlayer.x < 0) {
-          newPlayer.x = 0
-          newPlayer.velX = 0
+      const jumpPressed = keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW')
+      const canJump = player.onGround || (now - player.lastGroundTime < PHYSICS.COYOTE_TIME)
+
+      if (jumpPressed && canJump && !bubbleOpen && !player.isJumpHeld) {
+        player.velY = PHYSICS.JUMP_VELOCITY
+        player.onGround = false
+        player.isJumpHeld = true
+        player.jumpHoldTime = 0
+        playSound('jump')
+      }
+
+      if (jumpPressed && player.isJumpHeld && player.velY < 0) {
+        player.jumpHoldTime += 16
+        if (player.jumpHoldTime < PHYSICS.MAX_JUMP_HOLD) {
+          player.velY += PHYSICS.GRAVITY_REDUCED
+        } else {
+          player.velY += PHYSICS.GRAVITY
         }
-        if (newPlayer.x > WORLD.WORLD_WIDTH - newPlayer.width) {
-          newPlayer.x = WORLD.WORLD_WIDTH - newPlayer.width
-          newPlayer.velX = 0
-        }
+      } else if (!player.onGround) {
+        player.velY += PHYSICS.GRAVITY
+      }
 
-        // Platform collision detection
-        const platforms = level_1_1.platforms
+      if (!jumpPressed) {
+        player.isJumpHeld = false
+        player.jumpHoldTime = 0
+      }
 
-        // Check platform collisions
-        let onPlatform = false
-        const wasAirborne = !newPlayer.onGround && newPlayer.velY > 0
-        
-        platforms.forEach(platform => {
-          // Check if player is above platform and falling down
-          if (newPlayer.x + newPlayer.width > platform.x &&
-              newPlayer.x < platform.x + platform.width &&
-              newPlayer.y + newPlayer.height <= platform.y + 10 &&
-              newPlayer.y + newPlayer.height >= platform.y - 10 &&
-              newPlayer.velY >= 0) {
-            newPlayer.y = platform.y - newPlayer.height
-            newPlayer.velY = 0
-            
-            // Trigger squash on landing
-            if (wasAirborne && !newPlayer.onGround) {
-              newPlayer.squashTime = 80
-              newPlayer.scaleY = 0.9
-              playSound('land')
-            }
-            
-            newPlayer.onGround = true
-            onPlatform = true
-          }
-        })
+      if (player.velY > PHYSICS.MAX_FALL_SPEED) {
+        player.velY = PHYSICS.MAX_FALL_SPEED
+      }
 
-        // Ground collision
-        if (newPlayer.y + newPlayer.height >= WORLD.GROUND_HEIGHT) {
-          newPlayer.y = WORLD.GROUND_HEIGHT - newPlayer.height
-          newPlayer.velY = 0
-          
-          // Trigger squash on landing
-          if (wasAirborne && !newPlayer.onGround) {
-            newPlayer.squashTime = 80
-            newPlayer.scaleY = 0.9
+      player.x += player.velX
+      player.y += player.velY
+
+      if (player.onGround) {
+        player.lastGroundTime = now
+      }
+
+      if (!player.onGround) {
+        player.spriteState = 'jump'
+      } else if (Math.abs(player.velX) > 0.5) {
+        player.spriteState = Math.floor(player.animationFrame / 8) % 2 === 0 ? 'walk1' : 'walk2'
+      } else {
+        player.spriteState = 'idle'
+      }
+
+      if (player.x < 0) {
+        player.x = 0
+        player.velX = 0
+      }
+      if (player.x > WORLD.WORLD_WIDTH - player.width) {
+        player.x = WORLD.WORLD_WIDTH - player.width
+        player.velX = 0
+      }
+
+      // --- platform collisions ---
+      const platforms = level_1_1.platforms
+      let onPlatform = false
+      const wasAirborne = !player.onGround && player.velY > 0
+
+      platforms.forEach(platform => {
+        if (player.x + player.width > platform.x &&
+            player.x < platform.x + platform.width &&
+            player.y + player.height <= platform.y + 10 &&
+            player.y + player.height >= platform.y - 10 &&
+            player.velY >= 0) {
+          player.y = platform.y - player.height
+          player.velY = 0
+          if (wasAirborne && !player.onGround) {
+            player.squashTime = 80
+            player.scaleY = 0.9
             playSound('land')
           }
-          
-          newPlayer.onGround = true
-        } else if (!onPlatform && newPlayer.y + newPlayer.height < WORLD.GROUND_HEIGHT) {
-          newPlayer.onGround = false
+          player.onGround = true
+          onPlatform = true
         }
-
-        return newPlayer
       })
 
-      // Check coin collisions
-      setCollectedCoins(prevCollected => {
-        const coins = level_1_1.coins
+      if (player.y + player.height >= WORLD.GROUND_HEIGHT) {
+        player.y = WORLD.GROUND_HEIGHT - player.height
+        player.velY = 0
+        if (wasAirborne && !player.onGround) {
+          player.squashTime = 80
+          player.scaleY = 0.9
+          playSound('land')
+        }
+        player.onGround = true
+      } else if (!onPlatform && player.y + player.height < WORLD.GROUND_HEIGHT) {
+        player.onGround = false
+      }
 
-        const newCollected = new Set(prevCollected)
-        
-        coins.forEach((coin, index) => {
-          if (!prevCollected.has(index) &&
-              player.x + player.width > coin.x &&
-              player.x < coin.x + 16 &&
-              player.y + player.height > coin.y &&
-              player.y < coin.y + 16) {
-            newCollected.add(index)
-            setScore(prev => prev + 100)
-            playSound('coin')
-          }
-        })
-
-        return newCollected
+      // --- coin collisions ---
+      const coins = level_1_1.coins
+      const collected = collectedCoinsRef.current
+      let coinsCollectedThisFrame = 0
+      coins.forEach((coin, index) => {
+        if (!collected.has(index) &&
+            player.x + player.width > coin.x &&
+            player.x < coin.x + 16 &&
+            player.y + player.height > coin.y &&
+            player.y < coin.y + 16) {
+          collected.add(index)
+          coinsCollectedThisFrame++
+          playSound('coin')
+        }
       })
+      if (coinsCollectedThisFrame > 0) {
+        const delta = coinsCollectedThisFrame
+        setScore(prev => prev + 100 * delta)
+        setCollectedCoinCount(c => c + delta)
+      }
 
-      // Check question block collisions from below
+      // --- question-block collisions ---
       const questionBlocks = level_1_1.blocks.filter(b => b.type === 'question').map(b => {
         const project = level_1_1.projects.find(p => p.id === b.projectId)
         return {
@@ -413,17 +391,15 @@ export default function SimpleMarioGame() {
         }
       })
 
+      const hits = hitBlocksRef.current
       questionBlocks.forEach((block, index) => {
-        if (!hitBlocks.has(index) &&
-            // Player hitting block from below
+        if (!hits.has(index) &&
             player.x + player.width > block.x &&
             player.x < block.x + 32 &&
             player.y < block.y + 32 &&
             player.y + player.height > block.y &&
-            player.velY < 0) { // Player is moving upward
-          
-          // Add block to hit list
-          setHitBlocks(prev => new Set([...prev, index]))
+            player.velY < 0) {
+          hits.add(index)
           setScore(prev => prev + 200)
           setBubbleText({ title: block.title, description: block.description })
           setDisplayedText({ title: '', description: '' })
@@ -431,74 +407,64 @@ export default function SimpleMarioGame() {
           setTextFullyDisplayed(false)
           setShowTextBubble(true)
           playSound('block-hit')
-          
-          // Start block animation
-          setBlockAnimations(prev => [...prev, {
+
+          blockAnimationsRef.current.push({
             id: index,
             y: block.y,
             originalY: block.y,
             animTime: 0
-          }])
-          
-          // Spawn coin animation
-          setCoinAnimations(prev => [...prev, {
+          })
+          coinAnimationsRef.current.push({
             x: block.x + 8,
             y: block.y - 16,
             velY: -8,
             lifetime: 60
-          }])
+          })
         }
       })
 
-      // Update block animations
-      setBlockAnimations(prev => prev.map(anim => {
+      // --- block animations (in place, drop from tail) ---
+      const blockAnims = blockAnimationsRef.current
+      for (let i = blockAnims.length - 1; i >= 0; i--) {
+        const anim = blockAnims[i]
         anim.animTime += 16
         if (anim.animTime < 100) {
-          // Pop up phase
           anim.y = anim.originalY - 8 * (1 - anim.animTime / 100)
         } else if (anim.animTime < 300) {
-          // Return phase
           const t = (anim.animTime - 100) / 200
           anim.y = anim.originalY - 8 * (1 - t)
         } else {
-          // Animation complete
           anim.y = anim.originalY
+          blockAnims.splice(i, 1)
         }
-        return anim
-      }).filter(anim => anim.animTime < 300))
+      }
 
-      // Update coin animations
-      setCoinAnimations(prev => prev.map(coin => {
-        coin.velY += 0.5 // Gravity for coin
-        coin.y += coin.velY
-        coin.lifetime -= 1
-        return coin
-      }).filter(coin => coin.lifetime > 0))
+      // --- coin animations (in place, drop from tail) ---
+      const coinAnims = coinAnimationsRef.current
+      for (let i = coinAnims.length - 1; i >= 0; i--) {
+        const c = coinAnims[i]
+        c.velY += 0.5
+        c.y += c.velY
+        c.lifetime -= 1
+        if (c.lifetime <= 0) {
+          coinAnims.splice(i, 1)
+        }
+      }
 
-      // Update camera to follow player with lag (lerp)
-      setCamera(prevCamera => {
-        const newCamera = { ...prevCamera }
-        const targetX = player.x - WORLD.SCREEN_WIDTH / 2
-        const clampedTargetX = Math.max(0, Math.min(targetX, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
-        
-        // Smooth camera movement with lerp
-        const diff = clampedTargetX - prevCamera.x
-        newCamera.x = prevCamera.x + diff * 0.1  // 0.1 lerp factor for smooth follow
-        
-        // Ensure camera stays in bounds
-        newCamera.x = Math.max(0, Math.min(newCamera.x, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
-        
-        return newCamera
-      })
+      // --- camera (in-place lerp) ---
+      const targetX = player.x - WORLD.SCREEN_WIDTH / 2
+      const clampedTargetX = Math.max(0, Math.min(targetX, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
+      camera.x = camera.x + (clampedTargetX - camera.x) * 0.1
+      camera.x = Math.max(0, Math.min(camera.x, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
 
-      // Draw background (sky)
+      // --- background (sky) ---
       const gradient = ctx.createLinearGradient(0, 0, 0, WORLD.SCREEN_HEIGHT)
       gradient.addColorStop(0, '#87CEEB')
       gradient.addColorStop(1, '#98FB98')
       ctx.fillStyle = gradient
       ctx.fillRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
-      // Draw clouds
+      // --- clouds ---
       ctx.fillStyle = 'white'
       for (let i = 0; i < 10; i++) {
         const cloudX = (i * 200 + 100) - camera.x
@@ -507,9 +473,8 @@ export default function SimpleMarioGame() {
         }
       }
 
-      // Draw bushes
+      // --- bushes ---
       const bushes = level_1_1.decorations.filter(d => d.type === 'bush')
-      
       bushes.forEach(bush => {
         const bushX = bush.x - camera.x
         if (bushX > -60 && bushX < WORLD.SCREEN_WIDTH) {
@@ -517,9 +482,8 @@ export default function SimpleMarioGame() {
         }
       })
 
-      // Draw pipes (clickable for GitHub/LinkedIn)
+      // --- pipes ---
       const pipes = level_1_1.pipes
-      
       pipes.forEach(pipe => {
         const pipeX = pipe.x - camera.x
         if (pipeX > -40 && pipeX < WORLD.SCREEN_WIDTH) {
@@ -527,21 +491,18 @@ export default function SimpleMarioGame() {
         }
       })
 
-      // Draw ground with brick pattern
+      // --- ground ---
       const groundY = WORLD.GROUND_HEIGHT - camera.y
       const groundHeight = WORLD.SCREEN_HEIGHT - groundY
-      
-      // Base ground color
+
       ctx.fillStyle = '#8B4513'
       ctx.fillRect(0, groundY, WORLD.SCREEN_WIDTH, groundHeight)
-      
-      // Draw brick pattern
+
       ctx.fillStyle = '#A0522D'
       const brickWidth = 32
       const brickHeight = 16
       for (let x = 0; x < WORLD.SCREEN_WIDTH + brickWidth; x += brickWidth) {
         for (let y = groundY + 10; y < WORLD.SCREEN_HEIGHT; y += brickHeight) {
-          // Offset every other row
           const offsetX = (Math.floor((y - groundY) / brickHeight) % 2) * (brickWidth / 2)
           const brickX = x + offsetX
           if (brickX < WORLD.SCREEN_WIDTH) {
@@ -549,19 +510,12 @@ export default function SimpleMarioGame() {
           }
         }
       }
-      
-      // Draw grass on top of ground
+
       ctx.fillStyle = '#32CD32'
       ctx.fillRect(0, groundY, WORLD.SCREEN_WIDTH, 10)
 
-      // Draw platforms
       drawPlatforms(ctx, camera)
-
-      // Draw player
       drawPlayer(ctx, player, camera)
-
-      // Draw UI
-      drawUI(ctx, score)
 
       gameLoopRef.current = requestAnimationFrame(gameLoop)
     }
@@ -573,7 +527,8 @@ export default function SimpleMarioGame() {
         cancelAnimationFrame(gameLoopRef.current)
       }
     }
-  }, [player, camera, score, collectedCoins, hitBlocks, blockAnimations, coinAnimations, showTextBubble])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const drawCloud = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
     ctx.beginPath()
@@ -685,14 +640,17 @@ export default function SimpleMarioGame() {
 
   const drawPlatforms = (ctx: CanvasRenderingContext2D, camera: { x: number; y: number }) => {
     const platforms = level_1_1.platforms
+    const blockAnims = blockAnimationsRef.current
+    const hits = hitBlocksRef.current
+    const coinAnims = coinAnimationsRef.current
+    const collected = collectedCoinsRef.current
 
-    // Draw brick platforms
+    // Brick platforms
     ctx.fillStyle = '#8B4513'
     platforms.forEach(platform => {
       const screenX = platform.x - camera.x
       const screenY = platform.y - camera.y
       if (screenX > -platform.width && screenX < WORLD.SCREEN_WIDTH) {
-        // Draw as brick blocks
         const blocksWide = platform.width / 32
         for (let i = 0; i < blocksWide; i++) {
           drawBlock(ctx, screenX + i * 32, screenY, 'brick')
@@ -700,27 +658,23 @@ export default function SimpleMarioGame() {
       }
     })
 
-    // Draw all blocks
-    level_1_1.blocks.forEach((block, index) => {
+    // All blocks
+    level_1_1.blocks.forEach(block => {
       const screenX = block.x - camera.x
       const screenY = block.y - camera.y
-      
+
       if (screenX > -32 && screenX < WORLD.SCREEN_WIDTH) {
         if (block.type === 'question') {
-          // Check if block is animating
           const questionIndex = level_1_1.blocks.filter(b => b.type === 'question').findIndex(b => b.x === block.x && b.y === block.y)
-          const animation = blockAnimations.find(a => a.id === questionIndex)
+          const animation = blockAnims.find(a => a.id === questionIndex)
           const animatedY = animation ? animation.y : block.y
           const animatedScreenY = animatedY - camera.y
-          
-          // Draw used blocks as gray, unused as yellow
-          if (hitBlocks.has(questionIndex)) {
-            // Used block - draw as gray/empty block
+
+          if (hits.has(questionIndex)) {
             ctx.fillStyle = '#8B4513'
             ctx.fillRect(screenX, animatedScreenY, 32, 32)
             ctx.fillStyle = '#654321'
             ctx.fillRect(screenX + 2, animatedScreenY + 2, 28, 28)
-            // Draw empty/used indicator
             ctx.strokeStyle = '#4A2C17'
             ctx.lineWidth = 2
             ctx.strokeRect(screenX + 4, animatedScreenY + 4, 24, 24)
@@ -728,30 +682,26 @@ export default function SimpleMarioGame() {
             drawBlock(ctx, screenX, animatedScreenY, 'question')
           }
         } else {
-          // Draw brick blocks
           drawBlock(ctx, screenX, screenY, 'brick')
         }
       }
     })
 
-    // Draw coin animations
-    coinAnimations.forEach(coin => {
+    // Coin animations (spawned by question-block hits)
+    coinAnims.forEach(coin => {
       const screenX = coin.x - camera.x
       const screenY = coin.y - camera.y
       if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && coin.lifetime > 0) {
-        // Draw animated coin
         ctx.fillStyle = '#FFD700'
         ctx.beginPath()
         ctx.arc(screenX + 8, screenY + 8, 8, 0, Math.PI * 2)
         ctx.fill()
-        
-        // Inner circle
+
         ctx.fillStyle = '#FFA500'
         ctx.beginPath()
         ctx.arc(screenX + 8, screenY + 8, 5, 0, Math.PI * 2)
         ctx.fill()
-        
-        // Score text (+200)
+
         if (coin.lifetime > 30) {
           ctx.fillStyle = 'white'
           ctx.font = 'bold 12px monospace'
@@ -760,13 +710,12 @@ export default function SimpleMarioGame() {
       }
     })
 
-    // Draw coins
+    // Static coins
     const coins = level_1_1.coins
-
     coins.forEach((coin, index) => {
       const screenX = coin.x - camera.x
       const screenY = coin.y - camera.y
-      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && !collectedCoins.has(index)) {
+      if (screenX > -16 && screenX < WORLD.SCREEN_WIDTH && !collected.has(index)) {
         drawCoin(ctx, screenX, screenY)
       }
     })
@@ -926,10 +875,6 @@ export default function SimpleMarioGame() {
     ctx.restore()
   }
 
-  const drawUI = (ctx: CanvasRenderingContext2D, score: number) => {
-    // UI is now rendered as React overlays, not on canvas
-  }
-
   return (
     <div style={{
       position: 'relative',
@@ -979,7 +924,7 @@ export default function SimpleMarioGame() {
           <div>WORLD 1-1</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: '#FFD700' }}>●</span>
-            <span>× {Array.from(collectedCoins).length.toString().padStart(2, '0')}</span>
+            <span>× {collectedCoinCount.toString().padStart(2, '0')}</span>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
