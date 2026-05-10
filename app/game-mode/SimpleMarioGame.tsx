@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { level_1_1 } from '@/lib/level-data'
 import { playSound } from '@/lib/audio'
+import { buildSpriteAtlas, FRAME_H, FRAME_W, type SpriteAtlas } from './spriteAtlas'
 
 const PHYSICS = {
   GRAVITY: 1.0,  // Increased for weightier feel
@@ -143,6 +144,8 @@ export default function SimpleMarioGame() {
   const hitBlocksRef = useRef<Uint8Array>(new Uint8Array(QUESTION_BLOCKS.length))
   const blockAnimationsRef = useRef<BlockAnimation[]>(makeBlockAnimPool())
   const coinAnimationsRef = useRef<CoinAnimation[]>(makeCoinAnimPool())
+  // Sprite atlas — built once at mount; replaces hundreds of fillRects/frame.
+  const atlasRef = useRef<SpriteAtlas | null>(null)
 
   // React state — only what the HUD overlay / text bubble needs to re-render.
   const [score, setScore] = useState(0)
@@ -284,6 +287,14 @@ export default function SimpleMarioGame() {
     const skyGradient = ctx.createLinearGradient(0, 0, 0, WORLD.SCREEN_HEIGHT)
     skyGradient.addColorStop(0, '#87CEEB')
     skyGradient.addColorStop(1, '#98FB98')
+
+    // Build the sprite atlas once per mount.
+    if (!atlasRef.current) {
+      atlasRef.current = buildSpriteAtlas()
+    }
+    // Disable smoothing on the live ctx so drawImage from the atlas stays
+    // pixel-crisp (paired with image-rendering: pixelated on the <canvas>).
+    ctx.imageSmoothingEnabled = false
 
     const gameLoop = () => {
       ctx.clearRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
@@ -802,14 +813,15 @@ export default function SimpleMarioGame() {
   }
 
   const drawPlayer = (ctx: CanvasRenderingContext2D, player: Player, camera: { x: number; y: number }) => {
+    const atlas = atlasRef.current
+    if (!atlas) return
+
     const screenX = player.x - camera.x
     const screenY = player.y - camera.y
-    const pixelSize = 2
+    const frame = atlas.frameMap[player.spriteState]
 
-    // Save context for transformations
     ctx.save()
-    
-    // Apply squash effect and facing direction
+    // Anchor at bottom-center so squash + facing flip pivot correctly.
     if (player.facing === 'left') {
       ctx.translate(screenX + player.width / 2, screenY + player.height)
       ctx.scale(-1, player.scaleY)
@@ -820,138 +832,12 @@ export default function SimpleMarioGame() {
       ctx.translate(-player.width / 2, -player.height)
     }
 
-    const drawPixel = (x: number, y: number, color: string, width = pixelSize, height = pixelSize) => {
-      ctx.fillStyle = color
-      ctx.fillRect(x * pixelSize, y * pixelSize, width, height)
-    }
-
-    // Draw different sprite based on state
-    if (player.spriteState === 'jump') {
-      // JUMP SPRITE - arms up, legs spread
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Arms raised up
-      drawPixel(1, 9, '#FFE0BC'); drawPixel(2, 9, '#FFE0BC'); drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22'); drawPixel(13, 9, '#FFE0BC'); drawPixel(14, 9, '#FFE0BC')
-      drawPixel(0, 10, '#FFE0BC'); drawPixel(1, 10, '#FFE0BC'); drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22'); drawPixel(14, 10, '#FFE0BC'); drawPixel(15, 10, '#FFE0BC')
-      // Vest
-      drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22')
-      drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3')
-      // Pants - legs spread
-      drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513')
-      drawPixel(2, 14, '#8B4513'); drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513'); drawPixel(13, 14, '#8B4513')
-      drawPixel(1, 15, '#8B4513'); drawPixel(2, 15, '#8B4513'); drawPixel(3, 15, '#8B4513'); drawPixel(12, 15, '#8B4513'); drawPixel(13, 15, '#8B4513'); drawPixel(14, 15, '#8B4513')
-      // Legs spread
-      drawPixel(0, 16, '#FFE0BC'); drawPixel(1, 16, '#FFE0BC'); drawPixel(2, 16, '#FFE0BC'); drawPixel(13, 16, '#FFE0BC'); drawPixel(14, 16, '#FFE0BC'); drawPixel(15, 16, '#FFE0BC')
-      drawPixel(0, 17, '#FFE0BC'); drawPixel(1, 17, '#FFE0BC'); drawPixel(14, 17, '#FFE0BC'); drawPixel(15, 17, '#FFE0BC')
-      // Boots spread
-      drawPixel(0, 18, '#2F4F4F'); drawPixel(1, 18, '#2F4F4F'); drawPixel(14, 18, '#2F4F4F'); drawPixel(15, 18, '#2F4F4F')
-      drawPixel(0, 19, '#2F4F4F'); drawPixel(1, 19, '#2F4F4F'); drawPixel(14, 19, '#2F4F4F'); drawPixel(15, 19, '#2F4F4F')
-      
-    } else if (player.spriteState === 'walk1') {
-      // WALK FRAME 1 - left leg forward
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Vest with arms swinging
-      drawPixel(2, 9, '#FFE0BC'); drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22')
-      drawPixel(1, 10, '#FFE0BC'); drawPixel(2, 10, '#FFE0BC'); drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22'); drawPixel(13, 10, '#FFE0BC')
-      drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22'); drawPixel(13, 11, '#FFE0BC'); drawPixel(14, 11, '#FFE0BC')
-      drawPixel(2, 12, '#F5DEB3'); drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3'); drawPixel(13, 12, '#F5DEB3')
-      // Pants - walking pose
-      drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(7, 13, '#8B4513'); drawPixel(8, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513')
-      drawPixel(2, 14, '#8B4513'); drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(6, 14, '#8B4513'); drawPixel(9, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513')
-      drawPixel(1, 15, '#8B4513'); drawPixel(2, 15, '#8B4513'); drawPixel(3, 15, '#8B4513'); drawPixel(4, 15, '#8B4513'); drawPixel(10, 15, '#8B4513'); drawPixel(11, 15, '#8B4513'); drawPixel(12, 15, '#8B4513')
-      // Legs - left forward
-      drawPixel(0, 16, '#FFE0BC'); drawPixel(1, 16, '#FFE0BC'); drawPixel(2, 16, '#FFE0BC'); drawPixel(3, 16, '#FFE0BC'); drawPixel(11, 16, '#FFE0BC'); drawPixel(12, 16, '#FFE0BC')
-      drawPixel(0, 17, '#FFE0BC'); drawPixel(1, 17, '#FFE0BC'); drawPixel(2, 17, '#FFE0BC'); drawPixel(11, 17, '#FFE0BC'); drawPixel(12, 17, '#FFE0BC')
-      // Boots
-      drawPixel(0, 18, '#2F4F4F'); drawPixel(1, 18, '#2F4F4F'); drawPixel(2, 18, '#2F4F4F'); drawPixel(10, 18, '#2F4F4F'); drawPixel(11, 18, '#2F4F4F'); drawPixel(12, 18, '#2F4F4F')
-      drawPixel(0, 19, '#2F4F4F'); drawPixel(1, 19, '#2F4F4F'); drawPixel(2, 19, '#2F4F4F'); drawPixel(3, 19, '#2F4F4F'); drawPixel(10, 19, '#2F4F4F'); drawPixel(11, 19, '#2F4F4F'); drawPixel(12, 19, '#2F4F4F'); drawPixel(13, 19, '#2F4F4F')
-      drawPixel(0, 20, '#2F4F4F'); drawPixel(1, 20, '#2F4F4F'); drawPixel(2, 20, '#2F4F4F'); drawPixel(3, 20, '#2F4F4F'); drawPixel(10, 20, '#2F4F4F'); drawPixel(11, 20, '#2F4F4F'); drawPixel(12, 20, '#2F4F4F'); drawPixel(13, 20, '#2F4F4F')
-
-    } else if (player.spriteState === 'walk2') {
-      // WALK FRAME 2 - right leg forward
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Vest with opposite arm swing
-      drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22'); drawPixel(13, 9, '#FFE0BC')
-      drawPixel(2, 10, '#FFE0BC'); drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22'); drawPixel(13, 10, '#FFE0BC'); drawPixel(14, 10, '#FFE0BC')
-      drawPixel(1, 11, '#FFE0BC'); drawPixel(2, 11, '#FFE0BC'); drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22')
-      drawPixel(2, 12, '#F5DEB3'); drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3'); drawPixel(13, 12, '#F5DEB3')
-      // Pants - walking pose opposite
-      drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(7, 13, '#8B4513'); drawPixel(8, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513')
-      drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(6, 14, '#8B4513'); drawPixel(9, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513'); drawPixel(13, 14, '#8B4513')
-      drawPixel(3, 15, '#8B4513'); drawPixel(4, 15, '#8B4513'); drawPixel(5, 15, '#8B4513'); drawPixel(11, 15, '#8B4513'); drawPixel(12, 15, '#8B4513'); drawPixel(13, 15, '#8B4513'); drawPixel(14, 15, '#8B4513')
-      // Legs - right forward
-      drawPixel(3, 16, '#FFE0BC'); drawPixel(4, 16, '#FFE0BC'); drawPixel(12, 16, '#FFE0BC'); drawPixel(13, 16, '#FFE0BC'); drawPixel(14, 16, '#FFE0BC'); drawPixel(15, 16, '#FFE0BC')
-      drawPixel(3, 17, '#FFE0BC'); drawPixel(4, 17, '#FFE0BC'); drawPixel(13, 17, '#FFE0BC'); drawPixel(14, 17, '#FFE0BC'); drawPixel(15, 17, '#FFE0BC')
-      // Boots
-      drawPixel(3, 18, '#2F4F4F'); drawPixel(4, 18, '#2F4F4F'); drawPixel(5, 18, '#2F4F4F'); drawPixel(13, 18, '#2F4F4F'); drawPixel(14, 18, '#2F4F4F'); drawPixel(15, 18, '#2F4F4F')
-      drawPixel(2, 19, '#2F4F4F'); drawPixel(3, 19, '#2F4F4F'); drawPixel(4, 19, '#2F4F4F'); drawPixel(5, 19, '#2F4F4F'); drawPixel(12, 19, '#2F4F4F'); drawPixel(13, 19, '#2F4F4F'); drawPixel(14, 19, '#2F4F4F'); drawPixel(15, 19, '#2F4F4F')
-      drawPixel(2, 20, '#2F4F4F'); drawPixel(3, 20, '#2F4F4F'); drawPixel(4, 20, '#2F4F4F'); drawPixel(5, 20, '#2F4F4F'); drawPixel(12, 20, '#2F4F4F'); drawPixel(13, 20, '#2F4F4F'); drawPixel(14, 20, '#2F4F4F'); drawPixel(15, 20, '#2F4F4F')
-
-    } else {
-      // IDLE SPRITE - standing still
-      // Helmet
-      drawPixel(5, 0, '#FF8C00'); drawPixel(6, 0, '#FF8C00'); drawPixel(7, 0, '#FF8C00'); drawPixel(8, 0, '#FF8C00'); drawPixel(9, 0, '#FF8C00'); drawPixel(10, 0, '#FF8C00')
-      drawPixel(4, 1, '#FF8C00'); drawPixel(5, 1, '#FF8C00'); drawPixel(6, 1, '#FF8C00'); drawPixel(7, 1, '#FF8C00'); drawPixel(8, 1, '#FF8C00'); drawPixel(9, 1, '#FF8C00'); drawPixel(10, 1, '#FF8C00'); drawPixel(11, 1, '#FF8C00')
-      drawPixel(4, 2, '#FF8C00'); drawPixel(5, 2, '#FFA500'); drawPixel(6, 2, '#FFA500'); drawPixel(7, 2, '#FFA500'); drawPixel(8, 2, '#FFA500'); drawPixel(9, 2, '#FFA500'); drawPixel(10, 2, '#FFA500'); drawPixel(11, 2, '#FF8C00')
-      drawPixel(4, 3, '#8B4513'); drawPixel(5, 3, '#FFE0BC'); drawPixel(6, 3, '#FFE0BC'); drawPixel(7, 3, '#FFE0BC'); drawPixel(8, 3, '#000000'); drawPixel(9, 3, '#FFE0BC'); drawPixel(10, 3, '#000000'); drawPixel(11, 3, '#8B4513')
-      // Face
-      drawPixel(3, 4, '#8B4513'); drawPixel(4, 4, '#FFE0BC'); drawPixel(5, 4, '#FFE0BC'); drawPixel(6, 4, '#FFE0BC'); drawPixel(7, 4, '#FFE0BC'); drawPixel(8, 4, '#000000'); drawPixel(9, 4, '#FFE0BC'); drawPixel(10, 4, '#FFE0BC'); drawPixel(11, 4, '#FFE0BC'); drawPixel(12, 4, '#8B4513')
-      drawPixel(3, 5, '#8B4513'); drawPixel(4, 5, '#FFE0BC'); drawPixel(5, 5, '#FFE0BC'); drawPixel(6, 5, '#FFE0BC'); drawPixel(7, 5, '#FFE0BC'); drawPixel(8, 5, '#FFE0BC'); drawPixel(9, 5, '#FFE0BC'); drawPixel(10, 5, '#FFE0BC'); drawPixel(11, 5, '#FFE0BC'); drawPixel(12, 5, '#8B4513')
-      drawPixel(3, 6, '#8B4513'); drawPixel(4, 6, '#8B4513'); drawPixel(5, 6, '#FFE0BC'); drawPixel(6, 6, '#FFE0BC'); drawPixel(7, 6, '#000000'); drawPixel(8, 6, '#000000'); drawPixel(9, 6, '#FFE0BC'); drawPixel(10, 6, '#FFE0BC'); drawPixel(11, 6, '#8B4513'); drawPixel(12, 6, '#8B4513')
-      // Beard
-      drawPixel(5, 7, '#8B4513'); drawPixel(6, 7, '#8B4513'); drawPixel(7, 7, '#8B4513'); drawPixel(8, 7, '#000000'); drawPixel(9, 7, '#8B4513'); drawPixel(10, 7, '#8B4513')
-      drawPixel(4, 8, '#8B4513'); drawPixel(5, 8, '#8B4513'); drawPixel(6, 8, '#8B4513'); drawPixel(7, 8, '#8B4513'); drawPixel(8, 8, '#8B4513'); drawPixel(9, 8, '#8B4513'); drawPixel(10, 8, '#8B4513'); drawPixel(11, 8, '#8B4513')
-      // Vest
-      drawPixel(4, 9, '#228B22'); drawPixel(5, 9, '#228B22'); drawPixel(6, 9, '#F5DEB3'); drawPixel(7, 9, '#228B22'); drawPixel(8, 9, '#228B22'); drawPixel(9, 9, '#F5DEB3'); drawPixel(10, 9, '#228B22'); drawPixel(11, 9, '#228B22')
-      drawPixel(3, 10, '#228B22'); drawPixel(4, 10, '#228B22'); drawPixel(5, 10, '#228B22'); drawPixel(6, 10, '#F5DEB3'); drawPixel(7, 10, '#228B22'); drawPixel(8, 10, '#228B22'); drawPixel(9, 10, '#F5DEB3'); drawPixel(10, 10, '#228B22'); drawPixel(11, 10, '#228B22'); drawPixel(12, 10, '#228B22')
-      drawPixel(3, 11, '#228B22'); drawPixel(4, 11, '#228B22'); drawPixel(5, 11, '#F5DEB3'); drawPixel(6, 11, '#F5DEB3'); drawPixel(7, 11, '#8B4513'); drawPixel(8, 11, '#8B4513'); drawPixel(9, 11, '#F5DEB3'); drawPixel(10, 11, '#F5DEB3'); drawPixel(11, 11, '#228B22'); drawPixel(12, 11, '#228B22')
-      drawPixel(2, 12, '#F5DEB3'); drawPixel(3, 12, '#F5DEB3'); drawPixel(4, 12, '#F5DEB3'); drawPixel(5, 12, '#8B4513'); drawPixel(6, 12, '#F5DEB3'); drawPixel(7, 12, '#8B4513'); drawPixel(8, 12, '#8B4513'); drawPixel(9, 12, '#8B4513'); drawPixel(10, 12, '#F5DEB3'); drawPixel(11, 12, '#F5DEB3'); drawPixel(12, 12, '#F5DEB3'); drawPixel(13, 12, '#F5DEB3')
-      // Pants
-      drawPixel(2, 13, '#8B4513'); drawPixel(3, 13, '#8B4513'); drawPixel(4, 13, '#8B4513'); drawPixel(5, 13, '#8B4513'); drawPixel(6, 13, '#8B4513'); drawPixel(7, 13, '#8B4513'); drawPixel(8, 13, '#8B4513'); drawPixel(9, 13, '#8B4513'); drawPixel(10, 13, '#8B4513'); drawPixel(11, 13, '#8B4513'); drawPixel(12, 13, '#8B4513'); drawPixel(13, 13, '#8B4513')
-      drawPixel(2, 14, '#8B4513'); drawPixel(3, 14, '#8B4513'); drawPixel(4, 14, '#8B4513'); drawPixel(5, 14, '#8B4513'); drawPixel(6, 14, '#8B4513'); drawPixel(7, 14, '#8B4513'); drawPixel(8, 14, '#8B4513'); drawPixel(9, 14, '#8B4513'); drawPixel(10, 14, '#8B4513'); drawPixel(11, 14, '#8B4513'); drawPixel(12, 14, '#8B4513'); drawPixel(13, 14, '#8B4513')
-      drawPixel(2, 15, '#FFE0BC'); drawPixel(3, 15, '#FFE0BC'); drawPixel(4, 15, '#8B4513'); drawPixel(5, 15, '#8B4513'); drawPixel(6, 15, '#8B4513'); drawPixel(7, 15, '#8B4513'); drawPixel(8, 15, '#8B4513'); drawPixel(9, 15, '#8B4513'); drawPixel(10, 15, '#8B4513'); drawPixel(11, 15, '#8B4513'); drawPixel(12, 15, '#FFE0BC'); drawPixel(13, 15, '#FFE0BC')
-      // Legs
-      drawPixel(2, 16, '#FFE0BC'); drawPixel(3, 16, '#FFE0BC'); drawPixel(4, 16, '#FFE0BC'); drawPixel(5, 16, '#FFE0BC'); drawPixel(6, 16, '#8B4513'); drawPixel(7, 16, '#8B4513'); drawPixel(8, 16, '#8B4513'); drawPixel(9, 16, '#8B4513'); drawPixel(10, 16, '#FFE0BC'); drawPixel(11, 16, '#FFE0BC'); drawPixel(12, 16, '#FFE0BC'); drawPixel(13, 16, '#FFE0BC')
-      drawPixel(2, 17, '#FFE0BC'); drawPixel(3, 17, '#FFE0BC'); drawPixel(4, 17, '#FFE0BC'); drawPixel(5, 17, '#FFE0BC'); drawPixel(6, 17, '#8B4513'); drawPixel(7, 17, '#8B4513'); drawPixel(8, 17, '#8B4513'); drawPixel(9, 17, '#8B4513'); drawPixel(10, 17, '#FFE0BC'); drawPixel(11, 17, '#FFE0BC'); drawPixel(12, 17, '#FFE0BC'); drawPixel(13, 17, '#FFE0BC')
-      // Boots
-      drawPixel(1, 18, '#2F4F4F'); drawPixel(2, 18, '#2F4F4F'); drawPixel(3, 18, '#2F4F4F'); drawPixel(4, 18, '#2F4F4F'); drawPixel(5, 18, '#2F4F4F'); drawPixel(10, 18, '#2F4F4F'); drawPixel(11, 18, '#2F4F4F'); drawPixel(12, 18, '#2F4F4F'); drawPixel(13, 18, '#2F4F4F'); drawPixel(14, 18, '#2F4F4F')
-      drawPixel(0, 19, '#2F4F4F'); drawPixel(1, 19, '#2F4F4F'); drawPixel(2, 19, '#2F4F4F'); drawPixel(3, 19, '#2F4F4F'); drawPixel(4, 19, '#2F4F4F'); drawPixel(5, 19, '#2F4F4F'); drawPixel(10, 19, '#2F4F4F'); drawPixel(11, 19, '#2F4F4F'); drawPixel(12, 19, '#2F4F4F'); drawPixel(13, 19, '#2F4F4F'); drawPixel(14, 19, '#2F4F4F'); drawPixel(15, 19, '#2F4F4F')
-      drawPixel(0, 20, '#2F4F4F'); drawPixel(1, 20, '#2F4F4F'); drawPixel(2, 20, '#2F4F4F'); drawPixel(3, 20, '#2F4F4F'); drawPixel(4, 20, '#2F4F4F'); drawPixel(5, 20, '#2F4F4F'); drawPixel(10, 20, '#2F4F4F'); drawPixel(11, 20, '#2F4F4F'); drawPixel(12, 20, '#2F4F4F'); drawPixel(13, 20, '#2F4F4F'); drawPixel(14, 20, '#2F4F4F'); drawPixel(15, 20, '#2F4F4F')
-      drawPixel(0, 21, '#2F4F4F'); drawPixel(1, 21, '#2F4F4F'); drawPixel(2, 21, '#2F4F4F'); drawPixel(3, 21, '#2F4F4F'); drawPixel(4, 21, '#2F4F4F'); drawPixel(5, 21, '#2F4F4F'); drawPixel(10, 21, '#2F4F4F'); drawPixel(11, 21, '#2F4F4F'); drawPixel(12, 21, '#2F4F4F'); drawPixel(13, 21, '#2F4F4F'); drawPixel(14, 21, '#2F4F4F'); drawPixel(15, 21, '#2F4F4F')
-    }
-
+    // One blit instead of ~250 fillStyle/fillRect pairs.
+    ctx.drawImage(
+      atlas.canvas as CanvasImageSource,
+      frame.sx, frame.sy, frame.sw, frame.sh,
+      0, 0, FRAME_W, FRAME_H,
+    )
     ctx.restore()
   }
 

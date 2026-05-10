@@ -282,7 +282,7 @@ Targets per BRIEF:
 | # | Item | Status | Outcome |
 |---|---|---|---|
 | 1 | Hoist state to `useRef` | done | rAF effect dep array now `[]`; player/camera/hitBlocks/blockAnims/coinAnims/collectedCoins on refs; HUD reads `collectedCoinCount`. Static-export build passes (106 kB first-load JS, baseline). |
-| 2 | Sprite atlas + `drawImage` | pending | — |
+| 2 | Sprite atlas + `drawImage` | done | spriteAtlas.ts builds an OffscreenCanvas (with HTMLCanvasElement fallback) at mount; pixel data run-length encoded (~67 strips/frame × 4 frames). drawPlayer now does one drawImage. SimpleMarioGame.tsx 1112 → 998 lines (atlas data lives in 363 lines of mostly auto-generated runs). Page route 18.6 → 18.1 kB. |
 | 3 | Hoist static lookups | done | QUESTION_BLOCKS / QUESTION_INDEX_BY_XY / BUSH_DECORATIONS hoisted to module scope; sky gradient cached in useEffect. drawPlatforms O(n²) findIndex replaced with O(1) Map lookup. |
 | 4 | Eliminate hot-path allocs | done | hits/collected → Uint8Array; blockAnims/coinAnims → fixed pools (size 8); spawn/end mutate `active` flag instead of push/splice; hot-path forEach → for loops. |
 | 5 | DPR-aware canvas | pending | — |
