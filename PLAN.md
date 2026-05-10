@@ -194,7 +194,7 @@ canvas-painted; reduced-motion gating happens at the page level
 any of this). Verify by grep one more time before commit.
 
 ### 7. Audit `styles/content.css` for dead selectors
-**Status:** pending
+**Status:** done — per-class grep over `app/` and `components/plain/`. Removed only the two zero-match selectors: `.col-reading` and `.col-wide` (-3 lines). Every other selector has at least one referencing component. content.css is now lean.
 **Files:** `styles/content.css`.
 **Change:** Per the grep above, every selector in `content.css` is
 referenced by something in `components/plain/*` — there's nothing
