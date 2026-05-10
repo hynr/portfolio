@@ -231,14 +231,15 @@ export default function SimpleMarioGame() {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // CSS pixels → logical world units. Backing store is DPR-scaled, so we
+    // can't use canvas.width / rect.width; that would give backing pixels.
     const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
+    const cssToLogicalX = WORLD.SCREEN_WIDTH / rect.width
+    const cssToLogicalY = WORLD.SCREEN_HEIGHT / rect.height
 
-    const clickX = (e.clientX - rect.left) * scaleX
-    const clickY = (e.clientY - rect.top) * scaleY
+    const clickX = (e.clientX - rect.left) * cssToLogicalX
+    const clickY = (e.clientY - rect.top) * cssToLogicalY
 
-    // Convert screen coordinates to world coordinates
     const camera = cameraRef.current
     const worldX = clickX + camera.x
     const worldY = clickY + camera.y
@@ -279,6 +280,14 @@ export default function SimpleMarioGame() {
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+
+    // DPR-aware backing store so pixel art stays crisp on retina.
+    // Loop still draws in logical SCREEN_WIDTH × SCREEN_HEIGHT coords; the
+    // single ctx.scale(dpr, dpr) below maps them to backing pixels.
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1
+    canvas.width = WORLD.SCREEN_WIDTH * dpr
+    canvas.height = WORLD.SCREEN_HEIGHT * dpr
+    ctx.scale(dpr, dpr)
 
     // Seed coyote-time clock now that we're on the client.
     playerRef.current.lastGroundTime = Date.now()

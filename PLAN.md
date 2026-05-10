@@ -285,7 +285,7 @@ Targets per BRIEF:
 | 2 | Sprite atlas + `drawImage` | done | spriteAtlas.ts builds an OffscreenCanvas (with HTMLCanvasElement fallback) at mount; pixel data run-length encoded (~67 strips/frame × 4 frames). drawPlayer now does one drawImage. SimpleMarioGame.tsx 1112 → 998 lines (atlas data lives in 363 lines of mostly auto-generated runs). Page route 18.6 → 18.1 kB. |
 | 3 | Hoist static lookups | done | QUESTION_BLOCKS / QUESTION_INDEX_BY_XY / BUSH_DECORATIONS hoisted to module scope; sky gradient cached in useEffect. drawPlatforms O(n²) findIndex replaced with O(1) Map lookup. |
 | 4 | Eliminate hot-path allocs | done | hits/collected → Uint8Array; blockAnims/coinAnims → fixed pools (size 8); spawn/end mutate `active` flag instead of push/splice; hot-path forEach → for loops. |
-| 5 | DPR-aware canvas | pending | — |
+| 5 | DPR-aware canvas | done | canvas backing store sized to SCREEN_W × dpr; ctx.scale(dpr, dpr) once at mount; click handler converts CSS px → logical world units (DPR-independent); image-rendering: pixelated preserved on the live ctx via `imageSmoothingEnabled = false` (already set in item 2). |
 | 6 | Delete dead code | pending | — |
 | 7 | Sprite-atlas smoke test | pending | — |
 
