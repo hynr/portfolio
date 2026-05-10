@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { trackEvent } from './analytics'
+
+const MODE_KEY = 'portfolio-mode'
 
 /**
  * Always-content-first while game-mode is being polished.
@@ -17,10 +20,16 @@ export function getModePreference(): 'content' | 'game' {
 
 export function setModePreference(mode: 'content' | 'game') {
   if (typeof window === 'undefined') return
+  let from: 'content' | 'game' = 'content'
   try {
-    localStorage.setItem('portfolio-mode', mode)
+    const prev = localStorage.getItem(MODE_KEY)
+    if (prev === 'game' || prev === 'content') from = prev
+    localStorage.setItem(MODE_KEY, mode)
   } catch {
     // Safari private mode throws on setItem — silent.
+  }
+  if (from !== mode) {
+    trackEvent('mode_switch', { from, to: mode })
   }
 }
 

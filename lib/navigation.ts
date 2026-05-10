@@ -1,4 +1,5 @@
 import { playSound } from './audio'
+import { trackEvent } from './analytics'
 
 export type PipeLink = 'github' | 'linkedin' | 'email' | 'resume'
 
@@ -18,9 +19,10 @@ const navigationConfig: NavigationConfig = {
 
 export function handlePipeClick(linkTo: PipeLink): void {
   playSound('pipe-enter')
-  
+  trackEvent('pipe_click', { linkTo })
+
   const url = navigationConfig[linkTo]
-  
+
   if (!url) {
     console.warn(`Unknown pipe link: ${linkTo}`)
     return

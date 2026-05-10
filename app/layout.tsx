@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import { PORTFOLIO_DATA } from '@/lib/portfolio-data'
+import { ANALYTICS_DOMAIN } from '@/lib/analytics'
 import './globals.css'
 import '@/styles/sprites.css'
 import '@/styles/game.css'
@@ -124,6 +125,13 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
         />
+        {ANALYTICS_DOMAIN && (
+          <script
+            defer
+            data-domain={ANALYTICS_DOMAIN}
+            src="https://plausible.io/js/script.js"
+          />
+        )}
       </head>
       <body>{children}</body>
     </html>

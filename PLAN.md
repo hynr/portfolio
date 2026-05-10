@@ -293,7 +293,7 @@ show "no badge" → "badge fades in" — that's the right tradeoff vs
 SSR mismatch warnings.
 
 ### 5. Privacy-respecting analytics, env-gated (Plausible script tag)
-**Status:** pending
+**Status:** done — `lib/analytics.ts` exposes `trackEvent` (no-ops when `NEXT_PUBLIC_ANALYTICS_DOMAIN` unset). Conditional `<script defer data-domain={env} src=plausible/...>` rendered in `<head>`. `setModePreference` fires `mode_switch` (`{from, to}`) when value actually changes; `handlePipeClick` fires `pipe_click` (`{linkTo}`). Three event types total — pageview is auto via the script. Local dev: silent. No cookies, no PII.
 **Files:** `app/layout.tsx` (one new `<script>` in `<head>`,
 sibling to the JSON-LD from item 1 and the assets agent's font
 block), `app/page.tsx` (one new `useEffect` for `mode_switch`
