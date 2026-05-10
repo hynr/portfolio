@@ -24,6 +24,39 @@ const WORLD = {
   GROUND_HEIGHT: level_1_1.groundHeight
 }
 
+// Precomputed once from static level data — the loop must not recompute these.
+interface QuestionBlock {
+  x: number
+  y: number
+  title: string
+  description: string
+}
+
+const QUESTION_BLOCKS: QuestionBlock[] = level_1_1.blocks
+  .filter(b => b.type === 'question')
+  .map(b => {
+    const project = level_1_1.projects.find(p => p.id === b.projectId)
+    return {
+      x: b.x,
+      y: b.y,
+      title: project?.title || 'Project',
+      description: project?.description || 'Description'
+    }
+  })
+
+const QUESTION_INDEX_BY_XY: Map<string, number> = (() => {
+  const map = new Map<string, number>()
+  let qi = 0
+  for (const b of level_1_1.blocks) {
+    if (b.type === 'question') {
+      map.set(`${b.x},${b.y}`, qi++)
+    }
+  }
+  return map
+})()
+
+const BUSH_DECORATIONS = level_1_1.decorations.filter(d => d.type === 'bush')
+
 interface Player {
   x: number
   y: number
@@ -224,6 +257,11 @@ export default function SimpleMarioGame() {
     // Seed coyote-time clock now that we're on the client.
     playerRef.current.lastGroundTime = Date.now()
 
+    // Sky gradient is a function of canvas height only — build it once.
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, WORLD.SCREEN_HEIGHT)
+    skyGradient.addColorStop(0, '#87CEEB')
+    skyGradient.addColorStop(1, '#98FB98')
+
     const gameLoop = () => {
       ctx.clearRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
@@ -381,18 +419,8 @@ export default function SimpleMarioGame() {
       }
 
       // --- question-block collisions ---
-      const questionBlocks = level_1_1.blocks.filter(b => b.type === 'question').map(b => {
-        const project = level_1_1.projects.find(p => p.id === b.projectId)
-        return {
-          x: b.x,
-          y: b.y,
-          title: project?.title || 'Project',
-          description: project?.description || 'Description'
-        }
-      })
-
       const hits = hitBlocksRef.current
-      questionBlocks.forEach((block, index) => {
+      QUESTION_BLOCKS.forEach((block, index) => {
         if (!hits.has(index) &&
             player.x + player.width > block.x &&
             player.x < block.x + 32 &&
@@ -458,10 +486,7 @@ export default function SimpleMarioGame() {
       camera.x = Math.max(0, Math.min(camera.x, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
 
       // --- background (sky) ---
-      const gradient = ctx.createLinearGradient(0, 0, 0, WORLD.SCREEN_HEIGHT)
-      gradient.addColorStop(0, '#87CEEB')
-      gradient.addColorStop(1, '#98FB98')
-      ctx.fillStyle = gradient
+      ctx.fillStyle = skyGradient
       ctx.fillRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
       // --- clouds ---
@@ -474,8 +499,7 @@ export default function SimpleMarioGame() {
       }
 
       // --- bushes ---
-      const bushes = level_1_1.decorations.filter(d => d.type === 'bush')
-      bushes.forEach(bush => {
+      BUSH_DECORATIONS.forEach(bush => {
         const bushX = bush.x - camera.x
         if (bushX > -60 && bushX < WORLD.SCREEN_WIDTH) {
           drawBush(ctx, bushX, bush.y - camera.y)
@@ -665,7 +689,7 @@ export default function SimpleMarioGame() {
 
       if (screenX > -32 && screenX < WORLD.SCREEN_WIDTH) {
         if (block.type === 'question') {
-          const questionIndex = level_1_1.blocks.filter(b => b.type === 'question').findIndex(b => b.x === block.x && b.y === block.y)
+          const questionIndex = QUESTION_INDEX_BY_XY.get(`${block.x},${block.y}`) ?? -1
           const animation = blockAnims.find(a => a.id === questionIndex)
           const animatedY = animation ? animation.y : block.y
           const animatedScreenY = animatedY - camera.y
