@@ -113,7 +113,9 @@ content hashes), so I reverted that change.
 **Verify:** chunks unchanged (confirmed); site still builds.
 
 ### 3. Code-split game-mode behind `next/dynamic`
-**Status:** pending
+**Status:** done — page chunk 81→49 KB raw / 18.4→12.6 KB gz; new
+chunk `53.*.js` 35 KB raw / 6.8 KB gz, loaded only on game entry.
+Goal #3 (`< 200 KB` content-mode first-load gz) hit at ~182 KB.
 **Files:** `app/page.tsx` (4 lines — same lines perf agent owns for
 "mode plumbing"). **Coordination:** perf has not flagged any plan to
 restructure these lines, but I will post a cross-cutting note before
@@ -361,7 +363,7 @@ single canonical script.
 
 - [x] Item 1 — repo hygiene — moved 4 screenshots to docs/screenshots/; tsbuildinfo already gitignored (brief was wrong about it being tracked)
 - [x] Item 2 — tsconfig target es2020 — done; correctness only, byte-identical chunks (Next ignores tsconfig.target)
-- [ ] Item 3 — code-split game-mode
+- [x] Item 3 — code-split game-mode — done; page chunk 81→49 KB raw / 18.4→12.6 KB gz; new game chunk 35 KB raw / 6.8 KB gz, loaded only on game entry. Content-mode first-load gz now ~182 KB (well under 200 KB target).
 - [ ] Item 4 — re-enable type/lint
 - [ ] Item 5 — eslint config tighten
 - [ ] Item 6 — package.json scripts
