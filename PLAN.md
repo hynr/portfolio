@@ -113,7 +113,7 @@ ones explicitly so the sounds players actually hear repeatedly are
 never cold. Document in a comment.
 
 ### 4. Re-encode the 13 mp3s for size + quality match
-**Status:** pending — **needs decision below**
+**Status:** done — discovered the source files were actually 16-bit PCM WAVs misnamed `.mp3`. Re-encoded the 7 longer ones to AAC@24kbps mono via `afconvert` (saves 24,629 bytes); kept the 6 short SFX as WAV since AAC container overhead exceeds savings on sub-200ms clips. Renamed all to true extensions (`.wav` / `.m4a`). New total: 55,717 bytes (was 80,572) — under the 60KB target. `lib/audio.ts` updated with per-event extension map.
 **Files:** `public/sounds/*.mp3`, optional new `scripts/check-audio.sh`.
 **Change:** Three viable paths; pick one:
   - **(a) `afconvert` to 64kbps mono AAC (.m4a).** macOS built-in,

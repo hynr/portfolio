@@ -18,6 +18,27 @@ interface AudioConfig {
   footstepVolume: number
 }
 
+// Per-event file extension. The "mp3" files were actually 16-bit PCM WAVs
+// with .mp3 extensions; we re-encoded the longer sounds to AAC where it
+// saves bytes and renamed the rest to their true .wav extension. Short
+// SFX stay WAV because the AAC container overhead exceeds any savings on
+// sub-200ms clips. Both formats decode via Web Audio decodeAudioData.
+const SOUND_EXT: Record<SoundEvent, 'wav' | 'm4a'> = {
+  'jump': 'wav',
+  'land': 'wav',
+  'block-hit': 'wav',
+  'pause': 'wav',
+  'enemy-stomp': 'wav',
+  'footstep': 'wav',
+  'damage': 'wav',
+  'coin': 'm4a',
+  'block-reveal': 'm4a',
+  'pipe-enter': 'm4a',
+  'level-complete': 'm4a',
+  'die': 'm4a',
+  'game-over': 'm4a',
+}
+
 // Per-event lazy decode. The map stores either:
 //   - undefined: never requested, no fetch in flight
 //   - Promise<AudioBuffer | null>: fetch+decode in flight
@@ -91,7 +112,7 @@ class AudioManager {
     // so the assets resolve under GitHub Pages project deploys. Falls back
     // to '' for local dev and root deploys.
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
-    return `${base}/sounds/${event}.mp3`
+    return `${base}/sounds/${event}.${SOUND_EXT[event]}`
   }
 
   private ensureSound(event: SoundEvent): SoundEntry | undefined {
