@@ -18,9 +18,18 @@ interface AudioConfig {
   footstepVolume: number
 }
 
+// Per-event lazy decode. The map stores either:
+//   - undefined: never requested, no fetch in flight
+//   - Promise<AudioBuffer | null>: fetch+decode in flight
+//   - AudioBuffer: ready to play
+// First call for an unfetched event drops (decode is async) and starts the
+// fetch in the background; subsequent calls play. High-frequency SFX should
+// be warmed via warmSounds() so the first heard play is always ready.
+type SoundEntry = AudioBuffer | Promise<AudioBuffer | null>
+
 class AudioManager {
   private audioContext: AudioContext | null = null
-  private sounds: Map<SoundEvent, AudioBuffer> = new Map()
+  private sounds: Map<SoundEvent, SoundEntry> = new Map()
   private muted: boolean = false
   private initialized: boolean = false
   private listenersBound: boolean = false
@@ -54,7 +63,6 @@ class AudioManager {
       if (!this.initialized && typeof window !== 'undefined') {
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
         this.initialized = true
-        this.preloadSounds()
 
         document.removeEventListener('click', initAudio)
         document.removeEventListener('keydown', initAudio)
@@ -67,45 +75,52 @@ class AudioManager {
     document.addEventListener('touchstart', initAudio, { once: true })
   }
 
-  private async preloadSounds() {
-    if (!this.audioContext) return
+  // Kick off background fetch+decode for the listed events. Game-mode
+  // mount calls this for the high-frequency SFX so they're ready by the
+  // time the player triggers them. Safe to call before the AudioContext
+  // exists — decode runs as soon as the context is created and the data
+  // is fetched.
+  warmSounds(events: SoundEvent[]) {
+    for (const event of events) {
+      this.ensureSound(event)
+    }
+  }
 
+  private soundUrl(event: SoundEvent): string {
     // Prefix every sound URL with the deploy basePath (e.g. '/portfolio')
     // so the assets resolve under GitHub Pages project deploys. Falls back
     // to '' for local dev and root deploys.
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
-    const soundFiles: Record<SoundEvent, string> = {
-      'jump': `${base}/sounds/jump.mp3`,
-      'land': `${base}/sounds/land.mp3`,
-      'coin': `${base}/sounds/coin.mp3`,
-      'block-hit': `${base}/sounds/block-hit.mp3`,
-      'block-reveal': `${base}/sounds/block-reveal.mp3`,
-      'footstep': `${base}/sounds/footstep.mp3`,
-      'pipe-enter': `${base}/sounds/pipe-enter.mp3`,
-      'enemy-stomp': `${base}/sounds/enemy-stomp.mp3`,
-      'damage': `${base}/sounds/damage.mp3`,
-      'die': `${base}/sounds/die.mp3`,
-      'game-over': `${base}/sounds/game-over.mp3`,
-      'level-complete': `${base}/sounds/level-complete.mp3`,
-      'pause': `${base}/sounds/pause.mp3`,
-    }
+    return `${base}/sounds/${event}.mp3`
+  }
 
-    const loadPromises = Object.entries(soundFiles).map(async ([event, path]) => {
+  private ensureSound(event: SoundEvent): SoundEntry | undefined {
+    const existing = this.sounds.get(event)
+    if (existing) return existing
+
+    const path = this.soundUrl(event)
+    const pending: Promise<AudioBuffer | null> = (async () => {
       try {
         const response = await fetch(path)
         if (!response.ok) {
           console.warn(`Sound file not found: ${path}`)
-          return
+          return null
         }
         const arrayBuffer = await response.arrayBuffer()
-        const audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer)
-        this.sounds.set(event as SoundEvent, audioBuffer)
+        // Wait for the AudioContext to exist before decoding.
+        while (!this.audioContext) {
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer)
+        this.sounds.set(event, audioBuffer)
+        return audioBuffer
       } catch (error) {
         console.warn(`Failed to load sound: ${event}`, error)
+        return null
       }
-    })
-
-    await Promise.all(loadPromises)
+    })()
+    this.sounds.set(event, pending)
+    return pending
   }
 
   play(event: SoundEvent) {
@@ -114,9 +129,12 @@ class AudioManager {
       return
     }
 
-    const buffer = this.sounds.get(event)
+    const entry = this.ensureSound(event)
+    const buffer = entry instanceof AudioBuffer ? entry : null
     if (!buffer) {
-      console.log('[Sound]', event, '(not loaded)')
+      // First call for a cold sound: fetch+decode now started in the
+      // background, drop this play. Next call will land.
+      console.log('[Sound]', event, '(decoding)')
       return
     }
 
@@ -156,6 +174,12 @@ const audioManager = new AudioManager()
 // document-level click/keydown/touchstart listeners.
 export function initAudioOnInteraction(): void {
   audioManager.enableInteractionInit()
+}
+
+// Optional helper for game-mode mount: kick off background fetch+decode for
+// the high-frequency SFX so the first heard play is never cold.
+export function warmSounds(events: SoundEvent[]): void {
+  audioManager.warmSounds(events)
 }
 
 export function playSound(event: SoundEvent): void {

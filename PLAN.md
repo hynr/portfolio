@@ -88,7 +88,7 @@ AudioContexts before user gesture in some versions).
 mount). Cross-cutting note for `opt/perf` is at the bottom.
 
 ### 3. Decode-on-demand sounds, not all-on-first-interaction
-**Status:** pending
+**Status:** done — `preloadSounds()` removed. Replaced with per-event `ensureSound()` lazy decoder. Map stores `AudioBuffer | Promise<AudioBuffer | null>`. First call for a cold sound starts background fetch+decode and drops; next call plays. Exposed `warmSounds([...])` so game-mode can pre-warm high-frequency SFX without changing the play API.
 **Files:** `lib/audio.ts`.
 **Change:** Replace the `preloadSounds()` "fetch+decode all 13 on
 first interaction" path with a per-event lazy decoder:
