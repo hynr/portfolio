@@ -15,12 +15,6 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BASE_PATH: isGhPages ? repoBasePath : '',
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 }
 
 module.exports = nextConfig

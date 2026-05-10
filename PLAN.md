@@ -305,10 +305,51 @@ delete the branch without merging.
 
 ---
 
-## Cross-cutting findings (will be appended after item 4 lands)
+## Cross-cutting findings (post item 4)
 
-(Empty until I run `tsc --noEmit` on a working build. Will list every
-type error by `file:line — message` with the suspected owning agent.)
+`tsc --noEmit` on `opt/bundle` after re-enabling type-check produces
+**26 errors across 9 files**. **Every single one is in a file the perf
+agent has flagged for deletion** (per `../mario-perf/PLAN.md` item 6).
+After `opt/perf` merges, these self-resolve — no fix work needed by
+me or any other agent.
+
+| File | Errors | Owner | Resolution |
+|---|---|---|---|
+| `app/game-mode/MarioGame.tsx` | 4 (lines 118-121) | perf — deletes | auto on perf merge |
+| `components/game/InteractivePipeSprite.tsx` | 1 (line 74) | perf — deletes | auto on perf merge |
+| `components/sprites/BlockSprite.tsx` | 8 (lines 59-60, 100-101, 150-151, 181-182) | perf — deletes | auto on perf merge |
+| `components/sprites/BushSprite.tsx` | 2 (lines 145-146) | perf — deletes | auto on perf merge |
+| `components/sprites/CloudSprite.tsx` | 2 (lines 96-97) | perf — deletes | auto on perf merge |
+| `components/sprites/CoinSprite.tsx` | 2 (lines 54-55) | perf — deletes | auto on perf merge |
+| `components/sprites/GroundTile.tsx` | 2 (lines 249-250) | perf — deletes | auto on perf merge |
+| `components/sprites/PipeSprite.tsx` | 2 (lines 81-82) | perf — deletes | auto on perf merge |
+| `components/sprites/PlayerSprite.tsx` | 2 (lines 71-72) | perf — deletes | auto on perf merge |
+
+Error categories:
+- 25× `TS1117` "An object literal cannot have multiple properties with
+  the same name" — duplicate keys in inline `style={{}}` objects
+  (Tailwind/inline-style typos that strict mode catches).
+- 4× `TS2322` "Type '\"brick\"' is not assignable to type '\"question\" | \"block\"'"
+  — type literal narrowing in dead `MarioGame.tsx`.
+- 1× `TS2345` "Type 'PipeLink | undefined' is not assignable" — missing
+  null check in dead `InteractivePipeSprite.tsx`.
+
+**No errors in any live code path** (`SimpleMarioGame.tsx`, `app/page.tsx`,
+`app/layout.tsx`, `app/content-mode/`, `components/plain/`,
+`lib/portfolio-data.ts`, `lib/level-data.ts`, `lib/audio.ts`,
+`lib/mode-toggle.ts`, `lib/navigation.ts`, `app/game-mode/GameMode.tsx`).
+
+**Lead, on integration:** with perf merging first, the rebase of
+opt/bundle onto opt/perf will produce a green `npm run build`. If perf's
+order shifts, my branch CI will be red; that's the correct behaviour
+of the type gate, not a regression.
+
+Other ESLint fix landed in this commit:
+- Added `"root": true` to `.eslintrc.json` so ESLint stops walking up
+  to the parent worktree's config (which would otherwise produce a
+  "Plugin @next/next was conflicted" hard error during `next lint`
+  inside any sibling worktree). Cosmetic for CI on Pages (the runner
+  has no parent worktree), critical for local dev across worktrees.
 
 ---
 
@@ -364,7 +405,7 @@ single canonical script.
 - [x] Item 1 — repo hygiene — moved 4 screenshots to docs/screenshots/; tsbuildinfo already gitignored (brief was wrong about it being tracked)
 - [x] Item 2 — tsconfig target es2020 — done; correctness only, byte-identical chunks (Next ignores tsconfig.target)
 - [x] Item 3 — code-split game-mode — done; page chunk 81→49 KB raw / 18.4→12.6 KB gz; new game chunk 35 KB raw / 6.8 KB gz, loaded only on game entry. Content-mode first-load gz now ~182 KB (well under 200 KB target).
-- [ ] Item 4 — re-enable type/lint
+- [x] Item 4 — re-enable type/lint — done; 26 errors surface, ALL in files perf will delete (see findings above). Build red on opt/bundle until perf merges; then green.
 - [ ] Item 5 — eslint config tighten
 - [ ] Item 6 — package.json scripts
 - [ ] Item 7 — deploy artifact smoke check
