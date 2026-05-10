@@ -43,9 +43,16 @@ the four sibling branches have integrated.
 | `main-app-*.js` | 0.5 KB | 0.3 KB |
 | `app/page-*.js` | 80 KB | 18.4 KB |
 | `app/layout-*.js` | 0.85 KB | 0.4 KB |
-| **Content-mode first-load (sum, gz, excl. polyfills)** | — | **~187 KB** |
-| **Content-mode first-load (sum, gz, incl. polyfills)** | — | **~218 KB** |
+| **Content-mode first-load on modern browser (gz)** | — | **~187 KB** |
 | `out/` total | — | **1.5 MB** |
+
+**Polyfill clarification (post-baseline):** the polyfills chunk ships
+in `out/` but is loaded via `<script noModule>` and skipped by every
+modern browser. So 31 KB gz was never on the modern-browser first-load
+path. My original PLAN line 49 ("polyfills are the single biggest win
+available to me") was wrong. Item 2 is now a correctness-only change,
+not a size win. Real wins: code-splitting game-mode (~13 KB gz off
+content-mode page chunk).
 
 (Brief quoted ~1.1 MB for `out/`; my measurement on this machine reads
 1.5 MB at the same commit. Likely a `du -sh` block-size difference; I'll
@@ -89,21 +96,21 @@ tsconfig.tsbuildinfo` and the screenshot decision actionable in main.
 I'll list the exact commands in REPORT.md so the lead doesn't have to
 reverse-engineer them.
 
-### 2. Raise `tsconfig.target` to `es2020`
-**Status:** pending
+### 2. Raise `tsconfig.target` to `es2020` (correctness only)
+**Status:** done
 **Files:** `tsconfig.json`.
-**Change:** `target: "es5"` → `target: "es2020"`. (Library array gets
-`es2020` too.) Modern browsers — anything Next 14 supports — already
-have native async/await, classes, destructuring, etc. ES5 target makes
-Next emit `polyfills-*.js` of 91 KB raw / 31 KB gzipped on every page.
-**Impact:** content-mode first-load gzipped drops by ~31 KB (polyfills
-chunk shrinks to ~5 KB or disappears entirely on modern browsers via
-the `nomodule` trick Next does automatically). Single largest win
-available to me.
-**Risk:** low — Next 14's documented browser support is "modern
-browsers", not IE11. We are not shipping to IE11.
-**Verify:** `out/_next/static/chunks/polyfills-*.js` size shrinks; site
-still loads in current Safari/Chrome/Firefox.
+**Change:** `target: "es5"` → `target: "es2020"`, `lib: ["es6"]` →
+`lib: ["es2020"]`.
+**Impact:** correctness — TS code can use ES2020 syntax (optional
+chaining, nullish coalescing, BigInt) without down-leveling. **Zero
+bundle-size impact** — Next.js uses SWC with its own browserslist
+config, ignoring tsconfig.target for emit. The polyfills chunk also
+ships via `<script noModule>` and is skipped by modern browsers
+regardless. I tested adding a modern `browserslist` to `package.json`
+in the same iteration; it produced byte-identical chunks (same
+content hashes), so I reverted that change.
+**Risk:** none.
+**Verify:** chunks unchanged (confirmed); site still builds.
 
 ### 3. Code-split game-mode behind `next/dynamic`
 **Status:** pending
@@ -353,7 +360,7 @@ single canonical script.
 ## Status board
 
 - [x] Item 1 — repo hygiene — moved 4 screenshots to docs/screenshots/; tsbuildinfo already gitignored (brief was wrong about it being tracked)
-- [ ] Item 2 — tsconfig target es2020
+- [x] Item 2 — tsconfig target es2020 — done; correctness only, byte-identical chunks (Next ignores tsconfig.target)
 - [ ] Item 3 — code-split game-mode
 - [ ] Item 4 — re-enable type/lint
 - [ ] Item 5 — eslint config tighten
