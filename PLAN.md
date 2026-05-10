@@ -287,7 +287,7 @@ Targets per BRIEF:
 | 4 | Eliminate hot-path allocs | done | hits/collected → Uint8Array; blockAnims/coinAnims → fixed pools (size 8); spawn/end mutate `active` flag instead of push/splice; hot-path forEach → for loops. |
 | 5 | DPR-aware canvas | done | canvas backing store sized to SCREEN_W × dpr; ctx.scale(dpr, dpr) once at mount; click handler converts CSS px → logical world units (DPR-independent); image-rendering: pixelated preserved on the live ctx via `imageSmoothingEnabled = false` (already set in item 2). |
 | 6 | Delete dead code | done | 17 files / 2,742 lines removed; 4 directories now gone (components/audio, components/game, components/sprites, lib/game-engine). Bundle size unchanged because Next was already tree-shaking these — the win is source-tree clarity for sibling agents. |
-| 7 | Sprite-atlas smoke test | pending | — |
+| 7 | Sprite-atlas smoke test | done | spriteAtlas.test.ts asserts atlas dimensions, frame map, and ≥1 opaque pixel/frame. Dynamic-imported only when NODE_ENV !== 'production'; verified absent from out/ chunks after `npx next build`. |
 
 ## Cross-cutting note for opt/gameplay
 

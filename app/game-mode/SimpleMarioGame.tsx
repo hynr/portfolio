@@ -300,6 +300,15 @@ export default function SimpleMarioGame() {
     // Build the sprite atlas once per mount.
     if (!atlasRef.current) {
       atlasRef.current = buildSpriteAtlas()
+      // Dev-only smoke test. process.env.NODE_ENV is inlined at build time,
+      // so the dynamic import is dropped from the production bundle.
+      if (process.env.NODE_ENV !== 'production') {
+        const atlasForTest = atlasRef.current
+        import('./spriteAtlas.test')
+          .then(m => m.runSpriteAtlasSmokeTest(atlasForTest))
+          // eslint-disable-next-line no-console
+          .catch(err => console.error('[spriteAtlas.test] failed', err))
+      }
     }
     // Disable smoothing on the live ctx so drawImage from the atlas stays
     // pixel-crisp (paired with image-rendering: pixelated on the <canvas>).
