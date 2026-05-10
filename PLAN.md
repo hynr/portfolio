@@ -341,7 +341,7 @@ needed** — but I'll note it in the cross-cutting section as a
 courtesy.
 
 ### 6. Contact section a11y audit + visible focus + aria-label patches
-**Status:** pending
+**Status:** done — `focus-visible:outline` (2px, brand `coin-deep`) added on Send button, "Write another" button, email link, GitHub/LinkedIn external links. `aria-label="Compose another message"` on the "Write another" button. Form fields already had `<label htmlFor=>` + native `required`. Tab order verified left-to-right, top-to-bottom (documented in REPORT.md). All Tailwind class additions — no `styles/content.css` edits required.
 **Files:** `components/plain/Contact.tsx`.
 **Change:** Audit-then-patch (the audit is the value; the patch is
 small):

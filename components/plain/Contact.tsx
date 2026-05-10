@@ -78,7 +78,7 @@ export default function Contact() {
                   </p>
                   <a
                     href={`mailto:${PORTFOLIO_DATA.bio.email}`}
-                    className="link-wipe text-lg text-ink"
+                    className="link-wipe text-lg text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
                   >
                     {PORTFOLIO_DATA.bio.email}
                   </a>
@@ -91,7 +91,7 @@ export default function Contact() {
                     href="https://github.com/hynr"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="link-wipe link-pipe text-lg"
+                    className="link-wipe link-pipe text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
                   >
                     github.com/hynr
                   </a>
@@ -104,7 +104,7 @@ export default function Contact() {
                     href="https://linkedin.com/in/huzaifa-naroo"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="link-wipe link-sky text-lg"
+                    className="link-wipe link-sky text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
                   >
                     linkedin.com/in/huzaifa-naroo
                   </a>
@@ -165,7 +165,7 @@ export default function Contact() {
                   <div className="flex items-center gap-6 pt-2">
                     <button
                       type="submit"
-                      className="relative inline-flex items-center gap-3 px-7 py-3 bg-pipe text-white font-medium rounded-sm hover:bg-pipe-deep transition-colors duration-200 ease-out-quart"
+                      className="relative inline-flex items-center gap-3 px-7 py-3 bg-pipe text-white font-medium rounded-sm hover:bg-pipe-deep transition-colors duration-200 ease-out-quart focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coin-deep"
                     >
                       Send it
                       <span aria-hidden>→</span>
@@ -199,13 +199,15 @@ export default function Contact() {
                   </p>
                   <a
                     href={`mailto:${PORTFOLIO_DATA.bio.email}`}
-                    className="link-wipe text-lg"
+                    className="link-wipe text-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coin-deep rounded-sm"
                   >
                     {PORTFOLIO_DATA.bio.email}
                   </a>
                   <button
+                    type="button"
                     onClick={() => setSent(false)}
-                    className="block mt-6 font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft hover:text-brick transition-colors"
+                    aria-label="Compose another message"
+                    className="block mt-6 font-mono text-[0.72rem] uppercase tracking-[0.12em] text-ink-soft hover:text-brick transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coin-deep rounded-sm"
                   >
                     Write another →
                   </button>
