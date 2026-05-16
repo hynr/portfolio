@@ -48,6 +48,15 @@ const SOUND_EXT: Record<SoundEvent, 'wav' | 'm4a'> = {
 // be warmed via warmSounds() so the first heard play is always ready.
 type SoundEntry = AudioBuffer | Promise<AudioBuffer | null>
 
+// Original 16-step phrase in C major. Pairs of [frequency Hz, duration s].
+// Loops indefinitely; written so it isn't a copy of any branded melody.
+const MUSIC_MELODY: ReadonlyArray<readonly [number, number]> = [
+  [261.63, 0.18], [329.63, 0.18], [392.00, 0.18], [523.25, 0.36],
+  [392.00, 0.18], [440.00, 0.18], [493.88, 0.18], [523.25, 0.36],
+  [440.00, 0.18], [392.00, 0.18], [329.63, 0.36], [392.00, 0.18],
+  [261.63, 0.18], [293.66, 0.18], [329.63, 0.18], [261.63, 0.54],
+]
+
 class AudioManager {
   private audioContext: AudioContext | null = null
   private sounds: Map<SoundEvent, SoundEntry> = new Map()
@@ -58,6 +67,13 @@ class AudioManager {
     defaultVolume: 0.3,
     footstepVolume: 0.1
   }
+  // Music engine state — scheduler walks the melody array, queuing notes
+  // 500ms ahead so timing stays steady even if the main thread stalls.
+  private musicPlaying: boolean = false
+  private musicGain: GainNode | null = null
+  private musicNoteIndex: number = 0
+  private musicNextNoteTime: number = 0
+  private musicSchedulerHandle: number | null = null
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -162,19 +178,47 @@ class AudioManager {
     try {
       const source = this.audioContext.createBufferSource()
       const gainNode = this.audioContext.createGain()
-      
+
       source.buffer = buffer
-      
-      const volume = event === 'footstep' 
-        ? this.config.footstepVolume 
+
+      const volume = event === 'footstep'
+        ? this.config.footstepVolume
         : this.config.defaultVolume
       gainNode.gain.value = volume
-      
+
       source.connect(gainNode)
       gainNode.connect(this.audioContext.destination)
       source.start(0)
     } catch (error) {
       console.warn('Failed to play sound:', event, error)
+    }
+  }
+
+  // Pure Web Audio pitched note — no asset fetch. Triangle wave with a
+  // short percussive envelope (10ms attack, 180ms exponential decay) so it
+  // reads as a chiptune blip rather than a sustained tone. Frequency comes
+  // from the caller; SimpleMarioGame picks a melody per question block.
+  playNote(frequency: number) {
+    if (this.muted || !this.audioContext || !this.initialized) return
+    try {
+      const ctx = this.audioContext
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.value = frequency
+      const now = ctx.currentTime
+      // Use exponentialRamp because it can't accept zero — start at a tiny
+      // positive value, jump to peak, then decay. Peak well below master
+      // mix so it layers under the existing block-hit thud.
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.25)
+    } catch (error) {
+      console.warn('Failed to play note:', frequency, error)
     }
   }
 
@@ -185,6 +229,86 @@ class AudioManager {
 
   getMuted(): boolean {
     return this.muted
+  }
+
+  // ---------- background music ----------
+
+  // Force-create the AudioContext if it doesn't exist yet. Must be called
+  // synchronously from a user gesture (click/keydown) — that's the only
+  // time browsers allow context creation without auto-suspending it.
+  private ensureContext(): AudioContext | null {
+    if (this.audioContext) return this.audioContext
+    if (typeof window === 'undefined') return null
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      this.initialized = true
+      return this.audioContext
+    } catch {
+      return null
+    }
+  }
+
+  startMusic() {
+    if (this.musicPlaying) return
+    // Create the context here if needed — startMusic is always invoked from
+    // a click or keydown handler, so the user-gesture requirement is met.
+    const ctx = this.ensureContext()
+    if (!ctx) return
+    // Resume in case it was auto-suspended (some browsers do this when the
+    // page loses focus or on Safari first creation).
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined)
+    }
+    this.musicPlaying = true
+    if (!this.musicGain) {
+      this.musicGain = ctx.createGain()
+      this.musicGain.gain.value = 0.15 // quiet bed under SFX but actually audible
+      this.musicGain.connect(ctx.destination)
+    }
+    this.musicNoteIndex = 0
+    this.musicNextNoteTime = ctx.currentTime + 0.05
+    this.musicScheduler()
+    this.musicSchedulerHandle = window.setInterval(() => this.musicScheduler(), 80)
+  }
+
+  stopMusic() {
+    this.musicPlaying = false
+    if (this.musicSchedulerHandle !== null) {
+      clearInterval(this.musicSchedulerHandle)
+      this.musicSchedulerHandle = null
+    }
+  }
+
+  isMusicPlaying(): boolean {
+    return this.musicPlaying
+  }
+
+  private musicScheduler() {
+    if (!this.musicPlaying || !this.audioContext || !this.musicGain) return
+    const lookAhead = 0.4 // seconds ahead to schedule
+    while (this.musicNextNoteTime < this.audioContext.currentTime + lookAhead) {
+      const [freq, dur] = MUSIC_MELODY[this.musicNoteIndex]
+      this.scheduleMusicNote(freq, this.musicNextNoteTime, dur)
+      this.musicNextNoteTime += dur
+      this.musicNoteIndex = (this.musicNoteIndex + 1) % MUSIC_MELODY.length
+    }
+  }
+
+  private scheduleMusicNote(freq: number, t: number, duration: number) {
+    if (!this.audioContext || !this.musicGain) return
+    const osc = this.audioContext.createOscillator()
+    const noteGain = this.audioContext.createGain()
+    osc.type = 'square'
+    osc.frequency.value = freq
+    // Short attack + sustain + decay envelope for a chiptune pluck.
+    noteGain.gain.setValueAtTime(0.0001, t)
+    noteGain.gain.exponentialRampToValueAtTime(0.55, t + 0.01)
+    noteGain.gain.setValueAtTime(0.55, t + duration * 0.55)
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, t + duration * 0.95)
+    osc.connect(noteGain)
+    noteGain.connect(this.musicGain)
+    osc.start(t)
+    osc.stop(t + duration)
   }
 }
 
@@ -207,6 +331,16 @@ export function playSound(event: SoundEvent): void {
   audioManager.play(event)
 }
 
+// Question-block melody: ascending C major triad + octave. Each call plays
+// one note; SimpleMarioGame walks the array in order as blocks are hit, so
+// hitting all four forms a tiny musical phrase.
+export const BLOCK_NOTE_FREQS = [523.25, 659.25, 783.99, 1046.5] as const
+
+export function playBlockNote(noteIndex: number): void {
+  const freq = BLOCK_NOTE_FREQS[noteIndex % BLOCK_NOTE_FREQS.length]
+  audioManager.playNote(freq)
+}
+
 let muted = false
 
 export function setMuted(isMuted: boolean): void {
@@ -218,10 +352,14 @@ export function getMuted(): boolean {
   return audioManager.getMuted()
 }
 
-export function playMusic(track: 'main' | 'underground' | 'castle' | 'victory'): void {
-  console.log('[Music]', track)
+export function playMusic(_track: 'main' | 'underground' | 'castle' | 'victory' = 'main'): void {
+  audioManager.startMusic()
 }
 
 export function stopMusic(): void {
-  console.log('[Music] stopped')
+  audioManager.stopMusic()
+}
+
+export function isMusicPlaying(): boolean {
+  return audioManager.isMusicPlaying()
 }

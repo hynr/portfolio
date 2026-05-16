@@ -5,25 +5,31 @@
 // the chunk graph after your code-split lands).
 //
 // Asserts:
-//   1. Atlas dimensions match FRAME_W * 4 by FRAME_H.
-//   2. frameMap covers all four states with the expected per-frame rect.
-//   3. Each frame has at least one opaque pixel inside its rect.
+//   1. Atlas width covers player frames + goomba frames; height is FRAME_H.
+//   2. Both frameMap and goombaFrameMap have all expected entries sized
+//      against the player's full slot for Mario and the tighter 32-row
+//      slot for goombas.
+//   3. Each frame rect has at least one opaque pixel.
 // Throws on failure so the violation is loud in the dev console.
 
 import {
   buildSpriteAtlas,
   FRAME_H,
   FRAME_W,
+  GOOMBA_FRAME_H,
+  GOOMBA_FRAME_W,
+  type GoombaState,
   type SpriteAtlas,
   type SpriteState,
 } from './spriteAtlas'
 
 const STATES: readonly SpriteState[] = ['idle', 'walk1', 'walk2', 'jump']
+const GOOMBA_STATES: readonly GoombaState[] = ['gWalk1', 'gWalk2', 'gDead']
 
 export function runSpriteAtlasSmokeTest(
   atlas: SpriteAtlas = buildSpriteAtlas(),
 ): void {
-  const expectedW = FRAME_W * STATES.length
+  const expectedW = FRAME_W * (STATES.length + GOOMBA_STATES.length)
   const expectedH = FRAME_H
 
   if (atlas.width !== expectedW) {
@@ -49,6 +55,18 @@ export function runSpriteAtlasSmokeTest(
     }
   }
 
+  for (const state of GOOMBA_STATES) {
+    const frame = atlas.goombaFrameMap[state]
+    if (!frame) {
+      throw new Error(`spriteAtlas: missing goomba frame "${state}"`)
+    }
+    if (frame.sw !== GOOMBA_FRAME_W || frame.sh !== GOOMBA_FRAME_H) {
+      throw new Error(
+        `spriteAtlas: goomba "${state}" has size ${frame.sw}x${frame.sh}, expected ${GOOMBA_FRAME_W}x${GOOMBA_FRAME_H}`,
+      )
+    }
+  }
+
   const ctx = atlas.canvas.getContext('2d') as
     | CanvasRenderingContext2D
     | OffscreenCanvasRenderingContext2D
@@ -69,8 +87,20 @@ export function runSpriteAtlasSmokeTest(
     }
   }
 
+  for (const state of GOOMBA_STATES) {
+    const frame = atlas.goombaFrameMap[state]
+    const data = ctx.getImageData(frame.sx, frame.sy, frame.sw, frame.sh).data
+    let opaque = 0
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 0) opaque++
+    }
+    if (opaque === 0) {
+      throw new Error(`spriteAtlas: goomba "${state}" is fully transparent`)
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.info(
-    `[spriteAtlas.test] OK — ${atlas.width}×${atlas.height}, ${STATES.length} frames, all non-empty`,
+    `[spriteAtlas.test] OK — ${atlas.width}×${atlas.height}, ${STATES.length}+${GOOMBA_STATES.length} frames, all non-empty`,
   )
 }

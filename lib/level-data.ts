@@ -128,6 +128,16 @@ export const level_1_1: LevelData = {
     { x: 1850, y: 360 },
     { x: 1900, y: 360 },
     { x: 1950, y: 380 },
+    // Bonus coins above the cloud platforms — only reachable via clouds
+    { x: 540, y: 170 },
+    { x: 568, y: 170 },
+    { x: 596, y: 170 },
+    { x: 1520, y: 150 },
+    { x: 1548, y: 150 },
+    { x: 1576, y: 150 },
+    { x: 2300, y: 190 },
+    { x: 2328, y: 190 },
+    { x: 2356, y: 190 },
   ],
   pipes: [
     { x: 800, y: 386, height: 2, linkTo: 'github', enterable: false },
@@ -140,8 +150,19 @@ export const level_1_1: LevelData = {
     { x: 1300, y: 350, width: 96, height: 32, type: 'brick' },
     { x: 1700, y: 320, width: 128, height: 32, type: 'brick' },
     { x: 1900, y: 280, width: 160, height: 32, type: 'brick' },
+    // Bonus cloud platforms — reachable from the brick stairs above
+    { x: 520, y: 200, width: 96, height: 16, type: 'cloud' },
+    { x: 1500, y: 180, width: 96, height: 16, type: 'cloud' },
+    { x: 2280, y: 220, width: 112, height: 16, type: 'cloud' },
   ],
-  enemies: [],
+  enemies: [
+    // Goomba positions: y aligns to ground (groundHeight - 32). patrolStart
+    // and patrolEnd are the x bounds at which the goomba reverses direction
+    // — avoids having to solve side-collision against platforms/blocks.
+    { x: 700, y: 418, type: 'goomba', patrolStart: 540, patrolEnd: 760, speed: 0.6 },
+    { x: 1700, y: 418, type: 'goomba', patrolStart: 1500, patrolEnd: 1850, speed: 0.6 },
+    { x: 2050, y: 418, type: 'goomba', patrolStart: 1990, patrolEnd: 2160, speed: 0.7 },
+  ],
   decorations: [
     { x: 150, y: 420, type: 'bush', layer: 'foreground' },
     { x: 500, y: 420, type: 'bush', layer: 'foreground' },

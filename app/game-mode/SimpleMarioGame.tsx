@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { level_1_1 } from '@/lib/level-data'
-import { playSound } from '@/lib/audio'
+import { playSound, playBlockNote, playMusic, stopMusic } from '@/lib/audio'
 import { buildSpriteAtlas, FRAME_H, FRAME_W, type SpriteAtlas } from './spriteAtlas'
 
 const PHYSICS = {
@@ -93,6 +93,34 @@ interface CoinAnimation {
   lifetime: number
 }
 
+interface NoteAnimation {
+  active: boolean
+  x: number
+  y: number
+  velY: number
+  lifetime: number
+  maxLifetime: number
+  noteIndex: number
+}
+
+// Goomba pool — initialized from level_1_1.enemies once and never grown.
+// `alive` flips false on stomp; the goomba then renders as a squish frame
+// for `deathTime` ms before deactivating. `animTime` is wall-clock ms,
+// driven by frame dt, so the waddle stays consistent regardless of frame
+// rate — this is the dt-based animation pattern pulled from reruns/mario's
+// Sprite.update(dt).
+interface GoombaState {
+  active: boolean
+  x: number
+  y: number
+  velX: number
+  patrolStart: number
+  patrolEnd: number
+  alive: boolean
+  deathTime: number
+  animTime: number
+}
+
 // Fixed-capacity pools so animation spawn/end don't allocate.
 // Level 1-1 has 4 question blocks; 8 slots per pool is plenty.
 const ANIM_POOL_SIZE = 8
@@ -113,6 +141,95 @@ function makeCoinAnimPool(): CoinAnimation[] {
   return arr
 }
 
+function makeNoteAnimPool(): NoteAnimation[] {
+  const arr: NoteAnimation[] = new Array(ANIM_POOL_SIZE)
+  for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+    arr[i] = { active: false, x: 0, y: 0, velY: 0, lifetime: 0, maxLifetime: 0, noteIndex: 0 }
+  }
+  return arr
+}
+
+const GOOMBA_SIZE = 32
+const GOOMBA_DEATH_TIME = 250 // ms goomba stays visible as squished frame
+
+// Brick blocks become head-bonk collidable. Gold-mode bonk shatters them
+// into the debris pool; non-gold bonk just plays the thud.
+const BRICK_INDICES: number[] = []
+for (let i = 0; i < level_1_1.blocks.length; i++) {
+  if (level_1_1.blocks[i].type === 'brick') BRICK_INDICES.push(i)
+}
+
+const DEBRIS_POOL_SIZE = 32
+
+interface DebrisParticle {
+  active: boolean
+  x: number
+  y: number
+  velX: number
+  velY: number
+  rotation: number
+  rotVel: number
+  lifetime: number
+}
+
+function makeDebrisPool(): DebrisParticle[] {
+  const arr: DebrisParticle[] = new Array(DEBRIS_POOL_SIZE)
+  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
+    arr[i] = { active: false, x: 0, y: 0, velX: 0, velY: 0, rotation: 0, rotVel: 0, lifetime: 0 }
+  }
+  return arr
+}
+
+// Floating score popups (+100, +200, etc) drift up over ~45 frames.
+const SCORE_POPUP_POOL_SIZE = 16
+
+interface ScorePopup {
+  active: boolean
+  x: number
+  y: number
+  velY: number
+  lifetime: number
+  maxLifetime: number
+  text: string
+  color: string
+}
+
+function makeScorePopupPool(): ScorePopup[] {
+  const arr: ScorePopup[] = new Array(SCORE_POPUP_POOL_SIZE)
+  for (let i = 0; i < SCORE_POPUP_POOL_SIZE; i++) {
+    arr[i] = { active: false, x: 0, y: 0, velY: 0, lifetime: 0, maxLifetime: 0, text: '', color: '#FFFFFF' }
+  }
+  return arr
+}
+
+// End-flag geometry. Pole rises 160px from the ground; flag starts at the
+// top and slides down on contact.
+const FLAG_X = 2480
+const FLAG_POLE_TOP = level_1_1.groundHeight - 160
+const FLAG_POLE_BOTTOM = level_1_1.groundHeight - 8
+const FLAG_POLE_WIDTH = 6
+const PIPE_WIDTH = 40
+const PIPE_HEIGHT = 64
+const WARP_DURATION = 700 // ms
+
+const TOTAL_GOOMBAS = level_1_1.enemies.filter(e => e.type === 'goomba').length
+const TOTAL_COINS = level_1_1.coins.length
+
+function makeGoombaPool(): GoombaState[] {
+  const goombas = level_1_1.enemies.filter(e => e.type === 'goomba')
+  return goombas.map(e => ({
+    active: true,
+    x: e.x,
+    y: e.y,
+    velX: -e.speed,
+    patrolStart: e.patrolStart,
+    patrolEnd: e.patrolEnd,
+    alive: true,
+    deathTime: 0,
+    animTime: 0,
+  }))
+}
+
 export default function SimpleMarioGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameLoopRef = useRef<number>()
@@ -120,11 +237,14 @@ export default function SimpleMarioGame() {
 
   // Mutable game state lives in refs so the rAF loop binds once and per-frame
   // mutations don't trigger React renders.
+  // Player hitbox height matches the sprite atlas (FRAME_H) so the visible
+  // feet rest on the ground instead of floating 20px above it. All physics
+  // checks read `player.height`, so changing this one number is safe.
   const playerRef = useRef<Player>({
     x: level_1_1.startPosition.x,
-    y: level_1_1.groundHeight - 64,
+    y: level_1_1.groundHeight - FRAME_H,
     width: 32,
-    height: 64,
+    height: FRAME_H,
     velX: 0,
     velY: 0,
     targetVelX: 0,
@@ -144,6 +264,112 @@ export default function SimpleMarioGame() {
   const hitBlocksRef = useRef<Uint8Array>(new Uint8Array(QUESTION_BLOCKS.length))
   const blockAnimationsRef = useRef<BlockAnimation[]>(makeBlockAnimPool())
   const coinAnimationsRef = useRef<CoinAnimation[]>(makeCoinAnimPool())
+  const noteAnimationsRef = useRef<NoteAnimation[]>(makeNoteAnimPool())
+  const goombasRef = useRef<GoombaState[]>(makeGoombaPool())
+  // Per-block broken flag (1 = gone). Sized to the full block array so we
+  // can index directly by block index; only bricks ever get marked.
+  const brokenBlocksRef = useRef<Uint8Array>(new Uint8Array(level_1_1.blocks.length))
+  const debrisRef = useRef<DebrisParticle[]>(makeDebrisPool())
+  const scorePopupsRef = useRef<ScorePopup[]>(makeScorePopupPool())
+  const spawnScorePopup = (x: number, y: number, text: string, color = '#FFFFFF') => {
+    const pool = scorePopupsRef.current
+    for (let i = 0; i < SCORE_POPUP_POOL_SIZE; i++) {
+      if (!pool[i].active) {
+        const slot = pool[i]
+        slot.active = true
+        slot.x = x
+        slot.y = y
+        slot.velY = -1.4
+        slot.lifetime = 45
+        slot.maxLifetime = 45
+        slot.text = text
+        slot.color = color
+        return
+      }
+    }
+  }
+
+  // Camera shake — duration ms remaining and starting intensity in px.
+  // Decays linearly over the duration; the per-frame offset is applied
+  // when computing screen-space draw coords, not to camera.x itself, so
+  // the camera lerp stays stable.
+  const shakeRef = useRef<{ until: number; intensity: number }>({ until: 0, intensity: 0 })
+  const triggerShake = (intensity: number, durationMs: number) => {
+    shakeRef.current.intensity = Math.max(shakeRef.current.intensity, intensity)
+    shakeRef.current.until = Math.max(shakeRef.current.until, Date.now() + durationMs)
+  }
+  // Brief post-hit invincibility so a side collision doesn't damage on
+  // every frame the player overlaps the goomba.
+  const invincibleUntilRef = useRef<number>(0)
+  // Stomp triggers a knockback flash on the goomba's last position — kept
+  // intentionally minimal; portfolio doesn't need a full damage system.
+  const knockbackUntilRef = useRef<number>(0)
+
+  // Pipe warp: when active, input is frozen and the player slides down
+  // the pipe over WARP_DURATION; the link opens when the slide completes
+  // and the player respawns at level start.
+  const warpRef = useRef<{ active: boolean; pipeIndex: number; startTime: number }>({
+    active: false,
+    pipeIndex: -1,
+    startTime: 0,
+  })
+
+  // Completionist easter egg trackers. Stomped goombas and collected coins
+  // are counted as they happen; when both reach their level totals the
+  // bonus fires once and tints Mario gold for the rest of the run.
+  const killedGoombasRef = useRef<number>(0)
+  const coinCountRef = useRef<number>(0)
+  const bonusUnlockedRef = useRef<boolean>(false)
+  const [bonusBanner, setBonusBanner] = useState<string | null>(null)
+
+  // End-flag state. Position is hardcoded near level end; flag slides down
+  // its pole on contact, then a fade-to-black transitions to content mode.
+  const flagRef = useRef<{
+    triggered: boolean
+    startTime: number
+    finished: boolean
+  }>({ triggered: false, startTime: 0, finished: false })
+  const [fadeAlpha, setFadeAlpha] = useState(0)
+
+  // Background music toggle — persisted across reloads, off by default so
+  // visitors aren't surprised by audio.
+  const [musicOn, setMusicOn] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('mario-music') === 'on'
+  })
+  const toggleMusic = useCallback(() => {
+    setMusicOn(prev => {
+      const next = !prev
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mario-music', next ? 'on' : 'off')
+      }
+      if (next) playMusic('main')
+      else stopMusic()
+      return next
+    })
+  }, [])
+  // Auto-start music if the user had it on from a previous session — but
+  // only after the AudioContext is unlocked by a first interaction.
+  useEffect(() => {
+    if (!musicOn) {
+      stopMusic()
+      return
+    }
+    // Try once now (might no-op if context isn't initialized yet), then
+    // again on the next interaction.
+    playMusic('main')
+    const retry = () => playMusic('main')
+    document.addEventListener('click', retry, { once: true })
+    document.addEventListener('keydown', retry, { once: true })
+    return () => {
+      document.removeEventListener('click', retry)
+      document.removeEventListener('keydown', retry)
+    }
+  }, [musicOn])
+  // Stop music on unmount (e.g., switching to content mode).
+  useEffect(() => {
+    return () => { stopMusic() }
+  }, [])
   // Sprite atlas — built once at mount; replaces hundreds of fillRects/frame.
   const atlasRef = useRef<SpriteAtlas | null>(null)
 
@@ -164,6 +390,10 @@ export default function SimpleMarioGame() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current.add(e.code)
+      if (e.code === 'KeyM') {
+        toggleMusic()
+        return
+      }
       if (e.code === 'Space') {
         e.preventDefault()
         if (showTextBubble) {
@@ -194,7 +424,7 @@ export default function SimpleMarioGame() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [showTextBubble, textFullyDisplayed, bubbleText])
+  }, [showTextBubble, textFullyDisplayed, bubbleText, toggleMusic])
 
   // Text animation effect
   useEffect(() => {
@@ -225,6 +455,22 @@ export default function SimpleMarioGame() {
       }
     }
   }, [showTextBubble, textAnimationIndex, bubbleText, textFullyDisplayed])
+
+  // Download the current canvas frame as a PNG.
+  const handleScreenshot = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    try {
+      const dataUrl = canvas.toDataURL('image/png')
+      const link = document.createElement('a')
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      link.download = `mario-portfolio-${ts}.png`
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.warn('Screenshot failed', err)
+    }
+  }, [])
 
   // Canvas click handling for pipes
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -314,6 +560,20 @@ export default function SimpleMarioGame() {
     // pixel-crisp (paired with image-rendering: pixelated on the <canvas>).
     ctx.imageSmoothingEnabled = false
 
+    // Fires once when the player has cleared every goomba AND collected
+    // every coin in the level. Adds a bonus to score, tints Mario gold
+    // for the rest of the run, and shows a banner.
+    const tryUnlockBonus = () => {
+      if (bonusUnlockedRef.current) return
+      if (killedGoombasRef.current >= TOTAL_GOOMBAS && coinCountRef.current >= TOTAL_COINS) {
+        bonusUnlockedRef.current = true
+        setScore(prev => prev + 5000)
+        setBonusBanner("YOU'RE HIRED ★  +5000")
+        playSound('level-complete')
+        setTimeout(() => setBonusBanner(null), 3500)
+      }
+    }
+
     const gameLoop = () => {
       ctx.clearRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
@@ -336,7 +596,41 @@ export default function SimpleMarioGame() {
         }
       }
 
-      if (!bubbleOpen) {
+      // --- pipe warp animation ---
+      // Drives player.y directly while active; physics/input below are
+      // gated on !warping so they don't fight the slide.
+      const warp = warpRef.current
+      const warping = warp.active
+      if (warping) {
+        const pipe = level_1_1.pipes[warp.pipeIndex]
+        const elapsed = now - warp.startTime
+        const progress = Math.min(elapsed / WARP_DURATION, 1)
+        const eased = progress * progress
+        const startY = pipe.y - player.height
+        const endY = pipe.y + 32
+        player.y = startY + (endY - startY) * eased
+        player.velX = 0
+        player.velY = 0
+        player.spriteState = 'idle'
+
+        if (progress >= 1) {
+          // URL was already opened at warp start to stay within the user-
+          // activation window — just respawn the player here.
+          player.x = level_1_1.startPosition.x
+          player.y = level_1_1.groundHeight - player.height
+          player.velX = 0
+          player.velY = 0
+          warp.active = false
+          warp.pipeIndex = -1
+        }
+      }
+
+      // Once the flag is triggered the player freezes for the win sequence.
+      const flagTriggered = flagRef.current.triggered
+      const frozen = warping || flagTriggered
+
+      const knockedBack = now < knockbackUntilRef.current
+      if (!bubbleOpen && !knockedBack && !frozen) {
         if (keys.has('ArrowLeft') || keys.has('KeyA')) {
           player.targetVelX = -PHYSICS.MOVE_SPEED
           player.facing = 'left'
@@ -354,6 +648,9 @@ export default function SimpleMarioGame() {
           player.velX = player.targetVelX
         }
       } else {
+        // During knockback the goomba collision branch wrote velX; let it
+        // coast under friction so the bump is visible, then resume input
+        // control once the window expires.
         player.targetVelX = 0
         player.velX *= PHYSICS.FRICTION
       }
@@ -361,7 +658,7 @@ export default function SimpleMarioGame() {
       const jumpPressed = keys.has('Space') || keys.has('ArrowUp') || keys.has('KeyW')
       const canJump = player.onGround || (now - player.lastGroundTime < PHYSICS.COYOTE_TIME)
 
-      if (jumpPressed && canJump && !bubbleOpen && !player.isJumpHeld) {
+      if (jumpPressed && canJump && !bubbleOpen && !frozen && !player.isJumpHeld) {
         player.velY = PHYSICS.JUMP_VELOCITY
         player.onGround = false
         player.isJumpHeld = true
@@ -369,15 +666,17 @@ export default function SimpleMarioGame() {
         playSound('jump')
       }
 
-      if (jumpPressed && player.isJumpHeld && player.velY < 0) {
-        player.jumpHoldTime += 16
-        if (player.jumpHoldTime < PHYSICS.MAX_JUMP_HOLD) {
-          player.velY += PHYSICS.GRAVITY_REDUCED
-        } else {
+      if (!frozen) {
+        if (jumpPressed && player.isJumpHeld && player.velY < 0) {
+          player.jumpHoldTime += 16
+          if (player.jumpHoldTime < PHYSICS.MAX_JUMP_HOLD) {
+            player.velY += PHYSICS.GRAVITY_REDUCED
+          } else {
+            player.velY += PHYSICS.GRAVITY
+          }
+        } else if (!player.onGround) {
           player.velY += PHYSICS.GRAVITY
         }
-      } else if (!player.onGround) {
-        player.velY += PHYSICS.GRAVITY
       }
 
       if (!jumpPressed) {
@@ -413,10 +712,19 @@ export default function SimpleMarioGame() {
         player.velX = 0
       }
 
-      // --- platform collisions ---
+      // Anim pool handles must be readable both inside the collision gate
+      // (block-hit spawns) and outside it (per-frame anim updates), so
+      // they're declared at outer scope.
+      const blockAnims = blockAnimationsRef.current
+      const coinAnims = coinAnimationsRef.current
+      const noteAnims = noteAnimationsRef.current
+
+      // --- world/object collisions (skipped during warp + flag freeze
+      //     so the player's animated position isn't snapped or re-tripped) ---
       const platforms = level_1_1.platforms
       let onPlatform = false
-      const wasAirborne = !player.onGround && player.velY > 0
+      const wasAirborne = !frozen && !player.onGround && player.velY > 0
+      if (!frozen) {
 
       for (let i = 0, len = platforms.length; i < len; i++) {
         const platform = platforms[i]
@@ -428,6 +736,44 @@ export default function SimpleMarioGame() {
           player.y = platform.y - player.height
           player.velY = 0
           if (wasAirborne && !player.onGround) {
+            player.squashTime = 80
+            player.scaleY = 0.9
+            playSound('land')
+          }
+          player.onGround = true
+          onPlatform = true
+        }
+      }
+
+      // Pipes are solid: land on top, and the landing kicks off a warp.
+      const pipes = level_1_1.pipes
+      for (let i = 0, plen = pipes.length; i < plen; i++) {
+        const pipe = pipes[i]
+        if (player.x + player.width > pipe.x &&
+            player.x < pipe.x + PIPE_WIDTH &&
+            player.y + player.height <= pipe.y + 10 &&
+            player.y + player.height >= pipe.y - 10 &&
+            player.velY >= 0) {
+          player.y = pipe.y - player.height
+          player.velY = 0
+          if (wasAirborne && !player.onGround && !warpRef.current.active && pipe.linkTo) {
+            // Jumping onto a pipe enters it — Mario style. Open the link
+            // immediately (synchronously inside this rAF tick, while the
+            // jump's transient user-activation is still valid) so popup
+            // blockers don't trip on the deferred end-of-animation call.
+            const linkTo = pipe.linkTo
+            if (linkTo === 'github') window.open('https://github.com/hynr', '_blank')
+            else if (linkTo === 'linkedin') window.open('https://linkedin.com/in/huzaifa-naroo', '_blank')
+            else if (linkTo === 'email') window.location.href = 'mailto:huzaifa478@gmail.com'
+            else if (linkTo === 'resume') window.open('/resume.pdf', '_blank')
+
+            warpRef.current.active = true
+            warpRef.current.pipeIndex = i
+            warpRef.current.startTime = now
+            player.x = pipe.x + (PIPE_WIDTH - player.width) / 2
+            player.velX = 0
+            playSound('pipe-enter')
+          } else if (wasAirborne && !player.onGround) {
             player.squashTime = 80
             player.scaleY = 0.9
             playSound('land')
@@ -464,19 +810,20 @@ export default function SimpleMarioGame() {
             collected[index] = 1
             coinsCollectedThisFrame++
             playSound('coin')
+            spawnScorePopup(coin.x + 8, coin.y, '+100', '#FFD700')
           }
         }
       }
       if (coinsCollectedThisFrame > 0) {
         const delta = coinsCollectedThisFrame
+        coinCountRef.current += delta
         setScore(prev => prev + 100 * delta)
         setCollectedCoinCount(c => c + delta)
+        tryUnlockBonus()
       }
 
       // --- question-block collisions ---
       const hits = hitBlocksRef.current
-      const blockAnims = blockAnimationsRef.current
-      const coinAnims = coinAnimationsRef.current
       for (let index = 0, len = QUESTION_BLOCKS.length; index < len; index++) {
         if (hits[index] === 1) continue
         const block = QUESTION_BLOCKS[index]
@@ -487,12 +834,32 @@ export default function SimpleMarioGame() {
             player.velY < 0) {
           hits[index] = 1
           setScore(prev => prev + 200)
+          spawnScorePopup(block.x + 16, block.y, '+200', '#FFD700')
           setBubbleText({ title: block.title, description: block.description })
           setDisplayedText({ title: '', description: '' })
           setTextAnimationIndex(0)
           setTextFullyDisplayed(false)
           setShowTextBubble(true)
           playSound('block-hit')
+          // The block-hit thud layers under the pitched note — note picked
+          // by the block's question-index so hitting all four in order
+          // climbs a C major triad to the octave.
+          playBlockNote(index)
+
+          // Spawn floating ♪ glyph for the visual side of the note.
+          for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+            if (!noteAnims[s].active) {
+              const slot = noteAnims[s]
+              slot.active = true
+              slot.x = block.x + 16
+              slot.y = block.y - 8
+              slot.velY = -1.6
+              slot.lifetime = 55
+              slot.maxLifetime = 55
+              slot.noteIndex = index
+              break
+            }
+          }
 
           // Spawn block animation in first inactive pool slot.
           for (let s = 0; s < ANIM_POOL_SIZE; s++) {
@@ -518,6 +885,148 @@ export default function SimpleMarioGame() {
               break
             }
           }
+        }
+      }
+
+      // --- brick head-bonks ---
+      // Bricks are head-bonk collidable. Gold-mode shatters with debris;
+      // non-gold just stops the player and plays the thud.
+      const brokenBlocks = brokenBlocksRef.current
+      const debris = debrisRef.current
+      for (let b = 0; b < BRICK_INDICES.length; b++) {
+        const bi = BRICK_INDICES[b]
+        if (brokenBlocks[bi] === 1) continue
+        const brick = level_1_1.blocks[bi]
+        if (player.x + player.width > brick.x &&
+            player.x < brick.x + 32 &&
+            player.y < brick.y + 32 &&
+            player.y + player.height > brick.y &&
+            player.velY < 0) {
+          // Push the player back below the brick and reverse vertical speed.
+          player.y = brick.y + 32
+          player.velY = 2
+          playSound('block-hit')
+
+          if (bonusUnlockedRef.current) {
+            brokenBlocks[bi] = 1
+            setScore(prev => prev + 50)
+            spawnScorePopup(brick.x + 16, brick.y, '+50', '#FFA500')
+            triggerShake(3, 150)
+            const cx = brick.x + 16
+            const cy = brick.y + 16
+            const spreads: ReadonlyArray<readonly [number, number]> = [
+              [-3, -8],
+              [3, -8],
+              [-2, -4],
+              [2, -4],
+            ]
+            for (let s = 0; s < spreads.length; s++) {
+              for (let k = 0; k < DEBRIS_POOL_SIZE; k++) {
+                if (!debris[k].active) {
+                  const piece = debris[k]
+                  piece.active = true
+                  piece.x = cx
+                  piece.y = cy
+                  piece.velX = spreads[s][0]
+                  piece.velY = spreads[s][1]
+                  piece.rotation = Math.random() * Math.PI * 2
+                  piece.rotVel = (Math.random() - 0.5) * 0.4
+                  piece.lifetime = 50
+                  break
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // --- goomba update + player collision ---
+      const goombas = goombasRef.current
+      const FRAME_DT = 16
+      for (let g = 0, glen = goombas.length; g < glen; g++) {
+        const goomba = goombas[g]
+        if (!goomba.active) continue
+
+        if (!goomba.alive) {
+          goomba.deathTime -= FRAME_DT
+          if (goomba.deathTime <= 0) {
+            goomba.active = false
+          }
+          continue
+        }
+
+        goomba.animTime += FRAME_DT
+        goomba.x += goomba.velX
+        // Patrol bounds — cheaper than per-frame side-collision against
+        // every platform and block; lets the level author hand-tune where
+        // each goomba paces.
+        if (goomba.x <= goomba.patrolStart) {
+          goomba.x = goomba.patrolStart
+          goomba.velX = Math.abs(goomba.velX)
+        } else if (goomba.x + GOOMBA_SIZE >= goomba.patrolEnd) {
+          goomba.x = goomba.patrolEnd - GOOMBA_SIZE
+          goomba.velX = -Math.abs(goomba.velX)
+        }
+
+        // AABB overlap test against player
+        const overlapX = player.x + player.width > goomba.x && player.x < goomba.x + GOOMBA_SIZE
+        const overlapY = player.y + player.height > goomba.y && player.y < goomba.y + GOOMBA_SIZE
+        if (overlapX && overlapY) {
+          // Stomp: player must be descending AND coming from above (foot
+          // at or above the goomba's vertical midline this frame).
+          const fromAbove = player.velY > 0 && player.y + player.height < goomba.y + GOOMBA_SIZE / 2 + Math.abs(player.velY)
+          if (fromAbove) {
+            goomba.alive = false
+            goomba.deathTime = GOOMBA_DEATH_TIME
+            goomba.velX = 0
+            player.velY = PHYSICS.JUMP_VELOCITY * 0.55 // springboard
+            player.isJumpHeld = false
+            killedGoombasRef.current += 1
+            setScore(prev => prev + 100)
+            spawnScorePopup(goomba.x + GOOMBA_SIZE / 2, goomba.y, '+100', '#FFFFFF')
+            playSound('enemy-stomp')
+            tryUnlockBonus()
+          } else if (now > invincibleUntilRef.current) {
+            // Side hit: knock the player back, give a brief grace window
+            // so they aren't re-damaged every frame while still touching.
+            const dir = player.x < goomba.x ? -1 : 1
+            player.velX = dir * 8
+            player.velY = -8
+            player.onGround = false
+            invincibleUntilRef.current = now + 600
+            knockbackUntilRef.current = now + 200
+            playSound('damage')
+            triggerShake(6, 220)
+          }
+        }
+      }
+
+      } // end if (!frozen) — world-collision block
+
+      // --- end-flag detection + animation ---
+      if (!flagRef.current.triggered && !warping) {
+        if (player.x + player.width > FLAG_X && player.x < FLAG_X + FLAG_POLE_WIDTH + 24) {
+          flagRef.current.triggered = true
+          flagRef.current.startTime = now
+          player.velX = 0
+          player.velY = 0
+          // Snap the player to the base of the pole, facing right.
+          player.x = FLAG_X - player.width
+          player.facing = 'right'
+          playSound('level-complete')
+        }
+      }
+      if (flagRef.current.triggered) {
+        const elapsed = now - flagRef.current.startTime
+        // Fade overlay rises after the flag finishes sliding; route to
+        // content mode once the screen is fully black.
+        if (elapsed > 1500) {
+          const fade = Math.min((elapsed - 1500) / 1000, 1)
+          setFadeAlpha(fade)
+        }
+        if (elapsed >= 2500 && !flagRef.current.finished) {
+          flagRef.current.finished = true
+          window.location.href = '/'
         }
       }
 
@@ -549,20 +1058,80 @@ export default function SimpleMarioGame() {
         }
       }
 
+      // --- note animations (drift up, slight horizontal wobble, fade out) ---
+      for (let i = 0; i < ANIM_POOL_SIZE; i++) {
+        const n = noteAnims[i]
+        if (!n.active) continue
+        n.y += n.velY
+        n.lifetime -= 1
+        if (n.lifetime <= 0) {
+          n.active = false
+        }
+      }
+
+      // --- score popups (drift up, fade out) ---
+      const popups = scorePopupsRef.current
+      for (let i = 0; i < SCORE_POPUP_POOL_SIZE; i++) {
+        const p = popups[i]
+        if (!p.active) continue
+        p.y += p.velY
+        p.velY *= 0.96 // slight deceleration as it floats
+        p.lifetime -= 1
+        if (p.lifetime <= 0) p.active = false
+      }
+
+      // --- debris (gravity-pulled brick chunks from gold-mode breaks) ---
+      const debrisList = debrisRef.current
+      for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
+        const p = debrisList[i]
+        if (!p.active) continue
+        p.velY += 0.5
+        p.x += p.velX
+        p.y += p.velY
+        p.rotation += p.rotVel
+        p.lifetime -= 1
+        if (p.lifetime <= 0) {
+          p.active = false
+        }
+      }
+
       // --- camera (in-place lerp) ---
       const targetX = player.x - WORLD.SCREEN_WIDTH / 2
       const clampedTargetX = Math.max(0, Math.min(targetX, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
       camera.x = camera.x + (clampedTargetX - camera.x) * 0.1
       camera.x = Math.max(0, Math.min(camera.x, WORLD.WORLD_WIDTH - WORLD.SCREEN_WIDTH))
 
+      // --- camera shake (applied once around every draw call this frame) ---
+      let shakeX = 0
+      let shakeY = 0
+      const shake = shakeRef.current
+      if (now < shake.until) {
+        const remaining = (shake.until - now) / 250 // assume max 250ms shakes
+        const k = shake.intensity * Math.min(remaining, 1)
+        shakeX = (Math.random() - 0.5) * k * 2
+        shakeY = (Math.random() - 0.5) * k * 2
+      } else {
+        shake.intensity = 0
+      }
+      ctx.save()
+      ctx.translate(shakeX, shakeY)
+
       // --- background (sky) ---
       ctx.fillStyle = skyGradient
       ctx.fillRect(0, 0, WORLD.SCREEN_WIDTH, WORLD.SCREEN_HEIGHT)
 
-      // --- clouds ---
+      // --- clouds (slow leftward drift, wraps across world width) ---
       ctx.fillStyle = 'white'
-      for (let i = 0; i < 10; i++) {
-        const cloudX = (i * 200 + 100) - camera.x
+      const CLOUD_COUNT = 10
+      const CLOUD_SPACING = WORLD.WORLD_WIDTH / CLOUD_COUNT
+      // 25px/sec leftward; wraps at world width so clouds re-enter from
+      // the right after exiting the left edge.
+      const cloudDrift = (now / 40) % WORLD.WORLD_WIDTH
+      for (let i = 0; i < CLOUD_COUNT; i++) {
+        const baseX = i * CLOUD_SPACING + 100
+        const worldX = ((baseX - cloudDrift) % WORLD.WORLD_WIDTH + WORLD.WORLD_WIDTH) % WORLD.WORLD_WIDTH
+        // Parallax: only shift by 30% of camera so clouds feel distant.
+        const cloudX = worldX - camera.x * 0.3
         if (cloudX > -100 && cloudX < WORLD.SCREEN_WIDTH + 100) {
           drawCloud(ctx, cloudX, 80 + (i % 3) * 40)
         }
@@ -611,7 +1180,21 @@ export default function SimpleMarioGame() {
       ctx.fillRect(0, groundY, WORLD.SCREEN_WIDTH, 10)
 
       drawPlatforms(ctx, camera)
+      drawGoombas(ctx, camera)
+      drawFlag(ctx, camera, now)
       drawPlayer(ctx, player, camera)
+      // Re-draw the warping pipe on top of the player so the slide looks
+      // like it's actually going inside the pipe (the pipe body fully
+      // obscures the player's body once it dips below the rim).
+      if (warpRef.current.active) {
+        const wp = level_1_1.pipes[warpRef.current.pipeIndex]
+        drawPipe(ctx, wp.x - camera.x, wp.y - camera.y)
+      }
+      drawPipeHints(ctx, camera, player, now)
+
+      // Close the shake transform — HUD overlays live outside the canvas
+      // so they aren't affected.
+      ctx.restore()
 
       gameLoopRef.current = requestAnimationFrame(gameLoop)
     }
@@ -734,20 +1317,222 @@ export default function SimpleMarioGame() {
     ctx.fillRect(x + pipeWidth - 8, y + 8, 4, pipeHeight - 8)
   }
 
+  const roundRect = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ) => {
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.lineTo(x + w - r, y)
+    ctx.arcTo(x + w, y, x + w, y + r, r)
+    ctx.lineTo(x + w, y + h - r)
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+    ctx.lineTo(x + r, y + h)
+    ctx.arcTo(x, y + h, x, y + h - r, r)
+    ctx.lineTo(x, y + r)
+    ctx.arcTo(x, y, x + r, y, r)
+    ctx.closePath()
+  }
+
+  const drawFlag = (
+    ctx: CanvasRenderingContext2D,
+    camera: { x: number; y: number },
+    now: number,
+  ) => {
+    const screenX = FLAG_X - camera.x
+    if (screenX < -80 || screenX > WORLD.SCREEN_WIDTH + 80) return
+
+    // Pole base block
+    ctx.fillStyle = '#444'
+    ctx.fillRect(screenX - 8, FLAG_POLE_BOTTOM - camera.y, FLAG_POLE_WIDTH + 16, 8)
+    // Pole shaft
+    ctx.fillStyle = '#C0C0C0'
+    ctx.fillRect(screenX, FLAG_POLE_TOP - camera.y, FLAG_POLE_WIDTH, FLAG_POLE_BOTTOM - FLAG_POLE_TOP)
+    // Pole tip (ball on top)
+    ctx.fillStyle = '#FFD700'
+    ctx.beginPath()
+    ctx.arc(screenX + FLAG_POLE_WIDTH / 2, FLAG_POLE_TOP - camera.y - 4, 6, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Flag position: starts at top, slides down on trigger over 1500ms.
+    const flagTop = FLAG_POLE_TOP + 6
+    const flagBottom = FLAG_POLE_BOTTOM - 28
+    let flagY = flagTop
+    if (flagRef.current.triggered) {
+      const elapsed = now - flagRef.current.startTime
+      const slideT = Math.min(elapsed / 1500, 1)
+      // Ease-out so the descent looks weighted at the end.
+      const eased = 1 - Math.pow(1 - slideT, 2)
+      flagY = flagTop + (flagBottom - flagTop) * eased
+    }
+
+    // Triangular flag (red with white "1UP" stripe)
+    const flagX = screenX + FLAG_POLE_WIDTH
+    const flagScreenY = flagY - camera.y
+    ctx.fillStyle = '#E63946'
+    ctx.beginPath()
+    ctx.moveTo(flagX, flagScreenY)
+    ctx.lineTo(flagX + 28, flagScreenY + 12)
+    ctx.lineTo(flagX, flagScreenY + 24)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(flagX + 4, flagScreenY + 10, 14, 4)
+  }
+
+  const drawPipeHints = (
+    ctx: CanvasRenderingContext2D,
+    camera: { x: number; y: number },
+    player: Player,
+    now: number,
+  ) => {
+    const pipes = level_1_1.pipes
+    const PIPE_W = 40
+    const labels: Record<string, string> = {
+      github: 'GITHUB',
+      linkedin: 'LINKEDIN',
+      email: 'EMAIL',
+      resume: 'RESUME',
+    }
+
+    const activeWarpPipe = warpRef.current.active ? warpRef.current.pipeIndex : -1
+    for (let i = 0, plen = pipes.length; i < plen; i++) {
+      if (i === activeWarpPipe) continue
+      const pipe = pipes[i]
+      const screenX = pipe.x - camera.x
+      if (screenX < -120 || screenX > WORLD.SCREEN_WIDTH + 120) continue
+
+      const linkTo = pipe.linkTo
+      if (!linkTo) continue
+      const label = labels[linkTo] ?? 'OPEN'
+
+      // Player proximity intensifies the hint — within 200px it gets bigger
+      // and brighter so the player notices the affordance.
+      const playerCenterX = player.x + player.width / 2
+      const pipeCenterX = pipe.x + PIPE_W / 2
+      const distX = Math.abs(playerCenterX - pipeCenterX)
+      const near = distX < 200
+      const proximity = near ? 1 - Math.min(distX / 200, 1) : 0
+
+      const bob = Math.sin(now / 240 + i * 0.7) * 4
+      const pulse = 1 + proximity * 0.15
+      const text = `▼ JUMP IN · ${label}`
+
+      const fontSize = Math.round(10 * pulse)
+      ctx.font = `bold ${fontSize}px "Press Start 2P", monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      const padX = 8
+      const padY = 6
+      const metrics = ctx.measureText(text)
+      const boxW = metrics.width + padX * 2
+      const boxH = fontSize + padY * 2
+      const cx = pipe.x - camera.x + PIPE_W / 2
+      const cy = pipe.y - camera.y - 28 + bob
+
+      // Speech-bubble box with rounded edges; alpha rises with proximity
+      // so distant pipes whisper and nearby ones declare.
+      const baseAlpha = 0.75 + proximity * 0.25
+      ctx.globalAlpha = baseAlpha
+      ctx.fillStyle = near ? '#FFD700' : '#FFFFFF'
+      roundRect(ctx, cx - boxW / 2, cy - boxH / 2, boxW, boxH, 4)
+      ctx.fill()
+      ctx.lineWidth = 2
+      ctx.strokeStyle = '#000000'
+      ctx.stroke()
+
+      // Little downward triangle pointing at the pipe.
+      ctx.beginPath()
+      ctx.moveTo(cx - 5, cy + boxH / 2)
+      ctx.lineTo(cx + 5, cy + boxH / 2)
+      ctx.lineTo(cx, cy + boxH / 2 + 6)
+      ctx.closePath()
+      ctx.fillStyle = near ? '#FFD700' : '#FFFFFF'
+      ctx.fill()
+      ctx.stroke()
+
+      ctx.fillStyle = '#000000'
+      ctx.fillText(text, cx, cy)
+      ctx.globalAlpha = 1
+    }
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  const drawGoombas = (ctx: CanvasRenderingContext2D, camera: { x: number; y: number }) => {
+    const atlas = atlasRef.current
+    if (!atlas) return
+    const goombas = goombasRef.current
+    for (let g = 0, glen = goombas.length; g < glen; g++) {
+      const goomba = goombas[g]
+      if (!goomba.active) continue
+      const screenX = goomba.x - camera.x
+      const screenY = goomba.y - camera.y
+      if (screenX <= -GOOMBA_SIZE || screenX >= WORLD.SCREEN_WIDTH) continue
+
+      // Pick frame: squish if dying, else alternate walk1/walk2 every 200ms.
+      const frame = !goomba.alive
+        ? atlas.goombaFrameMap.gDead
+        : (Math.floor(goomba.animTime / 200) % 2 === 0
+            ? atlas.goombaFrameMap.gWalk1
+            : atlas.goombaFrameMap.gWalk2)
+
+      ctx.save()
+      // Mirror sprite to match facing — pivot around horizontal center.
+      if (goomba.velX > 0) {
+        ctx.translate(screenX + GOOMBA_SIZE / 2, screenY)
+        ctx.scale(-1, 1)
+        ctx.translate(-GOOMBA_SIZE / 2, 0)
+      } else {
+        ctx.translate(screenX, screenY)
+      }
+      ctx.drawImage(
+        atlas.canvas as CanvasImageSource,
+        frame.sx, frame.sy, frame.sw, frame.sh,
+        0, 0, GOOMBA_SIZE, GOOMBA_SIZE,
+      )
+      ctx.restore()
+    }
+  }
+
   const drawPlatforms = (ctx: CanvasRenderingContext2D, camera: { x: number; y: number }) => {
     const platforms = level_1_1.platforms
     const blockAnims = blockAnimationsRef.current
     const hits = hitBlocksRef.current
     const coinAnims = coinAnimationsRef.current
+    const noteAnims = noteAnimationsRef.current
     const collected = collectedCoinsRef.current
 
-    // Brick platforms
-    ctx.fillStyle = '#8B4513'
+    // Platforms — brick rendered tile-by-tile, cloud rendered as a single
+    // translucent puffy bar so it visually reads as "stand-on-able sky".
     for (let p = 0, plen = platforms.length; p < plen; p++) {
       const platform = platforms[p]
       const screenX = platform.x - camera.x
       const screenY = platform.y - camera.y
-      if (screenX > -platform.width && screenX < WORLD.SCREEN_WIDTH) {
+      if (screenX <= -platform.width || screenX >= WORLD.SCREEN_WIDTH) continue
+
+      if (platform.type === 'cloud') {
+        // Translucent puffy cloud body
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+        // Rounded body with hump bumps along the top
+        const w = platform.width
+        const h = platform.height
+        roundRect(ctx, screenX, screenY, w, h, 8)
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(60, 120, 180, 0.5)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        // Two top humps for that classic cloud silhouette
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+        ctx.beginPath()
+        ctx.arc(screenX + w * 0.3, screenY, h * 0.7, Math.PI, Math.PI * 2)
+        ctx.arc(screenX + w * 0.65, screenY, h * 0.9, Math.PI, Math.PI * 2)
+        ctx.fill()
+      } else {
         const blocksWide = platform.width / 32
         for (let i = 0; i < blocksWide; i++) {
           drawBlock(ctx, screenX + i * 32, screenY, 'brick')
@@ -757,7 +1542,9 @@ export default function SimpleMarioGame() {
 
     // All blocks
     const allBlocks = level_1_1.blocks
+    const broken = brokenBlocksRef.current
     for (let b = 0, blen = allBlocks.length; b < blen; b++) {
+      if (broken[b] === 1) continue
       const block = allBlocks[b]
       const screenX = block.x - camera.x
       const screenY = block.y - camera.y
@@ -809,13 +1596,32 @@ export default function SimpleMarioGame() {
         ctx.arc(screenX + 8, screenY + 8, 5, 0, Math.PI * 2)
         ctx.fill()
 
-        if (coin.lifetime > 30) {
-          ctx.fillStyle = 'white'
-          ctx.font = 'bold 12px monospace'
-          ctx.fillText('+200', screenX - 8, screenY - 4)
-        }
+        // (score popup is rendered separately so the +200 lasts longer
+        // than the coin-puff sprite)
       }
     }
+
+    // Floating ♪ glyphs from block hits — note index drives a hue shift
+    // so each block's note has a distinct color (matches the pitch climb).
+    const noteColors = ['#FF6B9D', '#FFB347', '#7BD389', '#67C7EB']
+    ctx.font = 'bold 22px serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (let s = 0; s < ANIM_POOL_SIZE; s++) {
+      const note = noteAnims[s]
+      if (!note.active) continue
+      const screenX = note.x - camera.x
+      const screenY = note.y - camera.y
+      if (screenX > -24 && screenX < WORLD.SCREEN_WIDTH + 24) {
+        const alpha = note.maxLifetime > 0 ? note.lifetime / note.maxLifetime : 0
+        const color = noteColors[note.noteIndex % noteColors.length]
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
+        ctx.fillStyle = color
+        ctx.fillText('♪', screenX, screenY)
+        ctx.globalAlpha = 1
+      }
+    }
+    ctx.textBaseline = 'alphabetic'
 
     // Static coins
     const coins = level_1_1.coins
@@ -828,11 +1634,64 @@ export default function SimpleMarioGame() {
         drawCoin(ctx, screenX, screenY)
       }
     }
+
+    // Debris chunks from gold-mode brick breaks
+    const debrisList = debrisRef.current
+    for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
+      const p = debrisList[i]
+      if (!p.active) continue
+      const screenX = p.x - camera.x
+      const screenY = p.y - camera.y
+      if (screenX < -20 || screenX > WORLD.SCREEN_WIDTH + 20) continue
+      const alpha = p.lifetime > 20 ? 1 : p.lifetime / 20
+      ctx.save()
+      ctx.translate(screenX, screenY)
+      ctx.rotate(p.rotation)
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = '#8B4513'
+      ctx.fillRect(-6, -6, 12, 12)
+      ctx.strokeStyle = '#5C2C0C'
+      ctx.lineWidth = 1
+      ctx.strokeRect(-6, -6, 12, 12)
+      ctx.globalAlpha = 1
+      ctx.restore()
+    }
+
+    // Floating score popups (+100 / +200 / etc.) — render on top of
+    // everything in the world layer.
+    const popups = scorePopupsRef.current
+    ctx.font = 'bold 14px "Press Start 2P", monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 3
+    for (let i = 0; i < SCORE_POPUP_POOL_SIZE; i++) {
+      const p = popups[i]
+      if (!p.active) continue
+      const screenX = p.x - camera.x
+      const screenY = p.y - camera.y
+      if (screenX < -30 || screenX > WORLD.SCREEN_WIDTH + 30) continue
+      const alpha = p.maxLifetime > 0 ? p.lifetime / p.maxLifetime : 0
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
+      ctx.strokeStyle = '#000000'
+      ctx.strokeText(p.text, screenX, screenY)
+      ctx.fillStyle = p.color
+      ctx.fillText(p.text, screenX, screenY)
+    }
+    ctx.globalAlpha = 1
+    ctx.textBaseline = 'alphabetic'
+    ctx.lineWidth = 1
   }
 
   const drawPlayer = (ctx: CanvasRenderingContext2D, player: Player, camera: { x: number; y: number }) => {
     const atlas = atlasRef.current
     if (!atlas) return
+
+    // Skip every other ~60ms during invincibility to flicker the sprite —
+    // standard NES damage cue.
+    const now = Date.now()
+    if (now < invincibleUntilRef.current && Math.floor(now / 60) % 2 === 0) {
+      return
+    }
 
     const screenX = player.x - camera.x
     const screenY = player.y - camera.y
@@ -856,6 +1715,15 @@ export default function SimpleMarioGame() {
       frame.sx, frame.sy, frame.sw, frame.sh,
       0, 0, FRAME_W, FRAME_H,
     )
+
+    // Easter-egg gold tint — `source-atop` confines the fill to the
+    // sprite's existing alpha, so the rect doesn't leak past the body.
+    if (bonusUnlockedRef.current) {
+      ctx.globalCompositeOperation = 'source-atop'
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.45)'
+      ctx.fillRect(0, 0, FRAME_W, FRAME_H)
+      ctx.globalCompositeOperation = 'source-over'
+    }
     ctx.restore()
   }
 
@@ -882,7 +1750,49 @@ export default function SimpleMarioGame() {
           cursor: 'crosshair'
         }}
       />
-      
+
+      {/* Fade-to-black overlay used by the end-flag win sequence. */}
+      {fadeAlpha > 0 && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'black',
+            opacity: fadeAlpha,
+            pointerEvents: 'none',
+            zIndex: 999,
+            transition: 'opacity 80ms linear',
+          }}
+        />
+      )}
+
+      {/* Bonus banner — fired by the completionist easter egg. */}
+      {bonusBanner && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '40%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '16px 28px',
+            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
+            color: '#1a1a1a',
+            border: '3px solid #000',
+            borderRadius: '6px',
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: '14px',
+            letterSpacing: '0.05em',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            zIndex: 998,
+            pointerEvents: 'none',
+            textAlign: 'center',
+          }}
+        >
+          {bonusBanner}
+        </div>
+      )}
+
       {/* HUD Overlay */}
       <div style={{
         position: 'absolute',
@@ -933,6 +1843,58 @@ export default function SimpleMarioGame() {
         ARROWS: MOVE  SPACE: JUMP
       </div>
       
+      {/* Screenshot + Music toggles — anchored bottom-right to stay clear
+          of both the Content mode and PLAIN MODE buttons in the top-right. */}
+      <div style={{
+        position: 'absolute',
+        bottom: '20px',
+        right: '20px',
+        display: 'flex',
+        gap: '8px',
+        zIndex: 1000,
+      }}>
+        <button
+          onClick={handleScreenshot}
+          aria-label="Download screenshot"
+          title="Download screenshot"
+          style={{
+            background: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            border: '2px solid white',
+            borderRadius: '8px',
+            width: '44px',
+            height: '44px',
+            fontSize: '20px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          📷
+        </button>
+        <button
+          onClick={() => toggleMusic()}
+          aria-label={musicOn ? 'Mute music' : 'Play music'}
+          title={musicOn ? 'Mute music (M)' : 'Play music (M)'}
+          style={{
+            background: musicOn ? 'rgba(255,215,0,0.9)' : 'rgba(0,0,0,0.7)',
+            color: musicOn ? '#000' : 'white',
+            border: '2px solid white',
+            borderRadius: '8px',
+            width: '44px',
+            height: '44px',
+            fontSize: '20px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {musicOn ? '♪' : '♪̸'}
+        </button>
+      </div>
+
       {/* Plain Mode Toggle */}
       <button
         onClick={() => {
