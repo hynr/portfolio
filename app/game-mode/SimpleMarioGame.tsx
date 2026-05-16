@@ -5,6 +5,12 @@ import { level_1_1 } from '@/lib/level-data'
 import { playSound, playBlockNote, playMusic, stopMusic } from '@/lib/audio'
 import { buildSpriteAtlas, FRAME_H, FRAME_W, type SpriteAtlas } from './spriteAtlas'
 
+// On GitHub Pages this resolves to "/portfolio" so internal nav lands on
+// the actual site root; locally and on root deploys it's "". Used by the
+// flag-win redirect, the PLAIN MODE button, and the resume pipe so they
+// don't 404 in production.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || ''
+
 const PHYSICS = {
   GRAVITY: 1.0,  // Increased for weightier feel
   GRAVITY_REDUCED: 0.5,  // For variable jump height
@@ -512,7 +518,7 @@ export default function SimpleMarioGame() {
             window.location.href = 'mailto:huzaifa478@gmail.com'
             break
           case 'resume':
-            window.open('/resume.pdf', '_blank')
+            window.open(`${BASE_PATH}/resume.pdf`, '_blank')
             break
         }
       }
@@ -765,7 +771,7 @@ export default function SimpleMarioGame() {
             if (linkTo === 'github') window.open('https://github.com/hynr', '_blank')
             else if (linkTo === 'linkedin') window.open('https://linkedin.com/in/huzaifa-naroo', '_blank')
             else if (linkTo === 'email') window.location.href = 'mailto:huzaifa478@gmail.com'
-            else if (linkTo === 'resume') window.open('/resume.pdf', '_blank')
+            else if (linkTo === 'resume') window.open(`${BASE_PATH}/resume.pdf`, '_blank')
 
             warpRef.current.active = true
             warpRef.current.pipeIndex = i
@@ -1026,7 +1032,9 @@ export default function SimpleMarioGame() {
         }
         if (elapsed >= 2500 && !flagRef.current.finished) {
           flagRef.current.finished = true
-          window.location.href = '/'
+          // BASE_PATH-prefixed so we land on /portfolio/ in production
+          // rather than the user-site root which 404s.
+          window.location.href = `${BASE_PATH}/`
         }
       }
 
@@ -1899,7 +1907,7 @@ export default function SimpleMarioGame() {
       <button
         onClick={() => {
           localStorage.setItem('displayMode', 'plain')
-          window.location.href = '/'
+          window.location.href = `${BASE_PATH}/`
         }}
         style={{
           position: 'absolute',
